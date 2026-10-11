@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-subtle: #F1F5F9;
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --brand: #176B63;
+  --brand-hover: #10574F;
+  --brand-subtle: #E8F3F1;
+  --border: #CBD5E1;
+  --border-focus: #176B63;
+  --success: #16805D;
+  --success-bg: #EDF7F2;
+  --warning: #B7791F;
+  --warning-bg: #FEF7EC;
+  --critical: #C43D4B;
+  --critical-bg: #FDF2F2;
+  --info: #3868C9;
+  --info-bg: #EEF4FD;
+}
+
+html {
+  font-size: 18px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+/* Ensure all table headers, cells and labels are bold, crisp and high-contrast */
+table th {
+  color: #0F172A !important;
+  font-weight: 800 !important;
+}
+
+table td {
+  color: #0F172A !important;
+}
+
+/* Tabular figures for KPIs, timers, and timestamps */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom crisp scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #94A3B8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
