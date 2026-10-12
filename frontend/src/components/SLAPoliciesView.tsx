@@ -39,7 +39,7 @@ export function SLAPoliciesView({
               <Clock className="h-6 w-6" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight">
-              SLA Policies & Escalation Engine
+              Escalation
             </h1>
           </div>
           <p className="text-sm sm:text-base text-[#475569] mt-1 font-medium">

@@ -71,7 +71,7 @@ export function Sidebar({
     },
     {
       id: "sla",
-      label: "SLA & Escalations",
+      label: "Escalation",
       icon: ClockAlert,
       roles: ["admin", "supervisor"],
     },

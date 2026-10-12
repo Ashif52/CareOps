@@ -44,7 +44,8 @@ export function Header({
     tickets: "Service Tickets / Global Register",
     "my-department": "Staff Workspace / Operational Queue",
     "ai-verify": "AI Verification Center / Evidence Diagnostics",
-    sla: "SLA Policies & Escalation Engine",
+    sla: "Escalation",
+    reviews: "Reputation & Patient Experience",
     departments: "Organization / Department & Staff Directory",
     rooms: "Facilities / QR Room Point Management",
     audit: "Compliance / Immutable Audit Logs",
@@ -91,10 +92,6 @@ export function Header({
         <span className="text-base sm:text-lg font-black text-[#0F172A] tracking-wide">
           {breadcrumbsMap[currentTab] || "Operations Dashboard"}
         </span>
-        <div className="hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#EDF7F2] border-2 border-[#A6E1CE] text-[#16805D] text-xs sm:text-sm font-black shadow-xs">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#16805D] animate-pulse" />
-          <span>SLA Engine Online</span>
-        </div>
       </div>
 
       {/* Global Actions */}
