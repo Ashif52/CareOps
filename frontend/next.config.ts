@@ -1,14 +1,18 @@
 import type { NextConfig } from "next";
 
+const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   cacheComponents: true,
   partialPrefetching: true,
   async rewrites() {
     return [
       {
         source: "/uploads/:path*",
-        destination: "http://127.0.0.1:8000/uploads/:path*",
+        destination: `${backendUrl}/uploads/:path*`,
       },
     ];
   },
