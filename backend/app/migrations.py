@@ -51,6 +51,26 @@ def run_migrations():
                 except Exception as ex:
                     logger.warning(f"Column users.{col_name} might already exist: {ex}")
 
+        if is_postgres:
+            try:
+                # Ensure foreign key on audit_logs.ticket_id sets null on ticket delete
+                conn.exec_driver_sql("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.table_constraints
+                            WHERE constraint_name = 'audit_logs_ticket_id_fkey'
+                        ) THEN
+                            ALTER TABLE audit_logs DROP CONSTRAINT audit_logs_ticket_id_fkey;
+                            ALTER TABLE audit_logs ADD CONSTRAINT audit_logs_ticket_id_fkey 
+                                FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE SET NULL;
+                        END IF;
+                    END $$;
+                """)
+                logger.info("Configured audit_logs_ticket_id_fkey with ON DELETE SET NULL")
+            except Exception as e:
+                logger.warning(f"Could not update audit_logs constraint: {e}")
+
         conn.commit()
 
     # Backfill seed users with Employee IDs & Designations

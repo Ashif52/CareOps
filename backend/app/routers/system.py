@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from sqlalchemy import text
 from app.database import get_db
 from app.models import (
     User, Ticket, Evidence, AIVerificationJob, TicketNote,
@@ -41,16 +42,24 @@ def clear_database(
             # 1. Count records before deletion
             tickets_count = db.query(Ticket).count()
 
-            # 2. Delete child entities in strict foreign-key order
-            # (AuditLog references Ticket via ticket_id, so AuditLog MUST be deleted before Ticket)
+            # 2. Nullify ticket references in audit logs first to prevent foreign-key constraints
+            try:
+                db.execute(text("UPDATE audit_logs SET ticket_id = NULL WHERE ticket_id IS NOT NULL;"))
+                db.flush()
+            except Exception as e:
+                logger.warning(f"Failed to nullify audit_logs.ticket_id: {e}")
+
+            # 3. Delete child entities in strict foreign-key order
             db.query(AIVerificationJob).delete(synchronize_session=False)
             db.query(Evidence).delete(synchronize_session=False)
             db.query(TicketNote).delete(synchronize_session=False)
             db.query(EscalationLog).delete(synchronize_session=False)
             db.query(AuditLog).delete(synchronize_session=False)
+            db.flush()
             db.query(Ticket).delete(synchronize_session=False)
+            db.flush()
 
-            # 3. Record audit ledger entry documenting superadmin purge
+            # 4. Record audit ledger entry documenting superadmin purge
             audit = AuditLog(
                 ticket_id=None,
                 actor_id=current_user.id,
@@ -77,13 +86,22 @@ def clear_database(
             # Count records before deletion
             tickets_count = db.query(Ticket).count()
 
+            # Nullify ticket references in audit logs first to prevent foreign-key constraints
+            try:
+                db.execute(text("UPDATE audit_logs SET ticket_id = NULL WHERE ticket_id IS NOT NULL;"))
+                db.flush()
+            except Exception as e:
+                logger.warning(f"Failed to nullify audit_logs.ticket_id: {e}")
+
             # Delete operational records in strict foreign-key order
             db.query(AIVerificationJob).delete(synchronize_session=False)
             db.query(Evidence).delete(synchronize_session=False)
             db.query(TicketNote).delete(synchronize_session=False)
             db.query(EscalationLog).delete(synchronize_session=False)
             db.query(AuditLog).delete(synchronize_session=False)
+            db.flush()
             db.query(Ticket).delete(synchronize_session=False)
+            db.flush()
 
             # Re-seed clean demo records
             seed_demo_tickets(db)
