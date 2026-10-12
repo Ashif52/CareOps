@@ -41,7 +41,7 @@ def seed_database():
             email="supervisor.mnt@careops.hospital",
             name="Vikramaditya Rao",
             role="supervisor",
-            department_id="maintenance",
+            department_id=None,
             phone="+91 98765 11111",
             avatar_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
             hashed_password=pw_hash
@@ -50,7 +50,7 @@ def seed_database():
             email="supervisor.nur@careops.hospital",
             name="Sister Mary Thomas",
             role="supervisor",
-            department_id="nursing",
+            department_id=None,
             phone="+91 98765 22222",
             avatar_url="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150",
             hashed_password=pw_hash
@@ -110,6 +110,11 @@ def seed_database():
             )
         ]
         db.add_all(departments_data)
+        db.flush()
+
+        # Link supervisors to their departments now that departments exist
+        sup_mnt.department_id = "maintenance"
+        sup_nur.department_id = "nursing"
         db.flush()
 
         # 3. Staff Users
