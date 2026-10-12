@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+from sqlalchemy.orm import Session
 from app.database import engine, Base, SessionLocal
 from app.models import (
     Department, User, Room, Ticket, Evidence, AIVerificationJob,
@@ -520,7 +521,7 @@ def seed_demo_tickets(db: Session):
     print("Demo tickets successfully seeded!")
 
 
-def seed_google_reviews(db):
+def seed_google_reviews(db: Session):
     print("Seeding Google Business Profile and live reviews intelligence...")
     now = utc_now()
 
