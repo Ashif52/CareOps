@@ -56,6 +56,8 @@ export function QRRoomManager({
   }, []);
 
   const isAdmin = currentUser?.role === "admin";
+  const isProduction = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : `http://${lanIP}:3000`;
 
   const getRoomUrl = (token: string) => {
     if (typeof window !== "undefined") {
@@ -163,29 +165,40 @@ export function QRRoomManager({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm text-[#17212F]">
-                Wi-Fi Network QR Live
+                {isProduction ? "Live Cloud Production QR Endpoints" : "Wi-Fi Network QR Live"}
               </span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#16805D] text-white">
                 <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                Active
+                {isProduction ? "Cloud Production" : "Active"}
               </span>
             </div>
             <p className="text-xs text-[#475467] mt-0.5 font-medium">
-              Physical smartphones and tablets on this Wi-Fi can scan bedside QR codes directly at:{" "}
-              <code className="font-mono font-bold text-[#176B63] bg-white/70 px-1.5 py-0.5 rounded border border-[#A7D7D1]/50">
-                http://{lanIP}:3000
-              </code>
+              {isProduction ? (
+                <>
+                  Bedside QR endpoints are live on your public production domain (scannable globally on any phone):{" "}
+                  <code className="font-mono font-bold text-[#176B63] bg-white/70 px-1.5 py-0.5 rounded border border-[#A7D7D1]/50">
+                    {currentOrigin}
+                  </code>
+                </>
+              ) : (
+                <>
+                  Physical smartphones and tablets on this Wi-Fi can scan bedside QR codes directly at:{" "}
+                  <code className="font-mono font-bold text-[#176B63] bg-white/70 px-1.5 py-0.5 rounded border border-[#A7D7D1]/50">
+                    http://{lanIP}:3000
+                  </code>
+                </>
+              )}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`http://${lanIP}:3000`}
+            href={isProduction ? currentOrigin : `http://${lanIP}:3000`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[#17212F] text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
           >
-            <span>Open Network URL</span>
+            <span>{isProduction ? "Open Live Portal" : "Open Network URL"}</span>
             <ExternalLink className="h-3.5 w-3.5 text-[#176B63]" />
           </a>
         </div>

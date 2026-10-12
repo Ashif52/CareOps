@@ -39,7 +39,7 @@ export function RoomQRPlacardModal({
 }: RoomQRPlacardModalProps) {
   const [copied, setCopied] = useState(false);
   const [lanIP, setLanIP] = useState("192.168.31.219");
-  const [hostMode, setHostMode] = useState<"lan" | "localhost" | "current" | "custom">("current");
+  const [hostMode, setHostMode] = useState<"current" | "lan" | "localhost" | "custom">("current");
   const [customHost, setCustomHost] = useState("");
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -55,11 +55,13 @@ export function RoomQRPlacardModal({
   }, []);
 
   const getTargetURL = () => {
-    let base = `http://${lanIP}:3000`;
-    if (hostMode === "localhost") {
+    let base = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    if (hostMode === "current") {
+      base = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    } else if (hostMode === "lan") {
+      base = `http://${lanIP}:3000`;
+    } else if (hostMode === "localhost") {
       base = "http://localhost:3000";
-    } else if (hostMode === "current" && typeof window !== "undefined") {
-      base = window.location.origin;
     } else if (hostMode === "custom" && customHost.trim()) {
       base = customHost.trim().startsWith("http") ? customHost.trim() : `http://${customHost.trim()}`;
     }
@@ -235,6 +237,16 @@ export function RoomQRPlacardModal({
                 <span>QR Network Target:</span>
               </span>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setHostMode("current")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    hostMode === "current"
+                      ? "bg-[#176B63] text-white shadow-xs"
+                      : "bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]"
+                  }`}
+                >
+                  🌐 Production (Vercel)
+                </button>
                 <button
                   onClick={() => setHostMode("lan")}
                   className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
