@@ -625,6 +625,11 @@ export const api = {
   getSLAPolicies: () => fetchWithAuth("/sla/policies"),
   runSLACheckNow: () => fetchWithAuth("/sla/check-now", { method: "POST" }),
   getEscalations: () => fetchWithAuth("/sla/escalations"),
+  getEscalationSettings: () => fetchWithAuth("/sla/escalation-settings"),
+  updateEscalationSettings: (data: any) =>
+    fetchWithAuth("/sla/escalation-settings", { method: "PUT", body: JSON.stringify(data) }),
+  testSMTPSConnection: (data?: { target_email?: string }) =>
+    fetchWithAuth("/sla/test-smtps", { method: "POST", body: JSON.stringify(data || {}) }),
 
   // Analytics & Audit
   getDashboardMetrics: () => fetchWithAuth("/analytics/dashboard"),

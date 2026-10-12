@@ -225,6 +225,21 @@ class EscalationLog(Base):
     
     ticket = relationship("Ticket", back_populates="escalations")
 
+class EscalationSetting(Base):
+    __tablename__ = "escalation_settings"
+    
+    id = Column(Integer, primary_key=True, default=1)
+    work_email = Column(String(255), nullable=True)
+    maintenance_email = Column(String(255), nullable=True, default="maintenance@careops.hospital")
+    maintenance_mobile = Column(String(50), nullable=True, default="+91 98765 00003")
+    smtp_host = Column(String(255), nullable=True)
+    smtp_port = Column(Integer, default=465)
+    smtp_user = Column(String(255), nullable=True)
+    smtp_password = Column(String(255), nullable=True)
+    smtp_from = Column(String(255), nullable=True, default="alerts@careops.hospital")
+    smtp_use_ssl = Column(Boolean, default=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
 class TicketNote(Base):
     __tablename__ = "ticket_notes"
     

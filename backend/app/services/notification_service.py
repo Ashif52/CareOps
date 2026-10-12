@@ -16,7 +16,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Ticket, EscalationLog, AuditLog, Department, User
+from app.models import Ticket, EscalationLog, AuditLog, Department, User, EscalationSetting
 
 logger = logging.getLogger("careops.notifications")
 
@@ -27,6 +27,33 @@ def utc_now():
 
 class NotificationService:
     @staticmethod
+    def get_effective_settings(db: Session) -> Dict[str, Any]:
+        """Loads escalation & SMTPS settings from database first, falling back to environment config"""
+        db_conf = db.query(EscalationSetting).filter(EscalationSetting.id == 1).first()
+        work_email = (db_conf.work_email if db_conf and db_conf.work_email else settings.WORK_EMAIL or "").strip()
+        maint_email = (db_conf.maintenance_email if db_conf and db_conf.maintenance_email else settings.MAINTENANCE_DEPARTMENT_EMAIL or "maintenance@careops.hospital").strip()
+        maint_mobile = (db_conf.maintenance_mobile if db_conf and db_conf.maintenance_mobile else settings.MAINTENANCE_DEPARTMENT_MOBILE or "+91 98765 00003").strip()
+        smtp_host = (db_conf.smtp_host if db_conf and db_conf.smtp_host else settings.SMTP_HOST or "").strip()
+        smtp_port = db_conf.smtp_port if db_conf and db_conf.smtp_port else settings.SMTP_PORT
+        smtp_user = (db_conf.smtp_user if db_conf and db_conf.smtp_user else settings.SMTP_USER or "").strip()
+        smtp_password = db_conf.smtp_password if db_conf and db_conf.smtp_password else settings.SMTP_PASSWORD
+        smtp_from = (db_conf.smtp_from if db_conf and db_conf.smtp_from else settings.SMTP_FROM or "alerts@careops.hospital").strip()
+        smtp_use_ssl = db_conf.smtp_use_ssl if db_conf and db_conf.smtp_use_ssl is not None else settings.SMTP_USE_SSL
+
+        return {
+            "work_email": work_email,
+            "maintenance_email": maint_email,
+            "maintenance_mobile": maint_mobile,
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "smtp_user": smtp_user,
+            "smtp_password": smtp_password,
+            "smtp_from": smtp_from,
+            "smtp_use_ssl": smtp_use_ssl,
+            "source": "database" if db_conf else "environment"
+        }
+
+    @staticmethod
     def send_escalation_alert(
         db: Session,
         ticket: Ticket,
@@ -35,27 +62,31 @@ class NotificationService:
         trigger_source: str = "SLA_BREACH"
     ) -> Dict[str, Any]:
         """
-        Dispatches an emergency escalation alert for a patient ticket to:
-        1. Configured WORK_EMAIL (if set in environment or settings)
-        2. Maintenance Department Email (or department supervisor)
-        3. Maintenance Department Mobile Number (logged & SMS gateway dispatched)
+        Dispatches an emergency escalation alert for a patient ticket directly using database configurations:
+        1. Configured WORK_EMAIL (saved in database)
+        2. Maintenance Department Email (saved in database)
+        3. Maintenance Department Mobile Number (saved in database)
         Uses secure SMTPS (SSL/TLS) protocol.
         """
         now = utc_now()
+        effective = NotificationService.get_effective_settings(db)
 
         # 1. Determine Target Recipients
         recipients: List[str] = []
 
-        # If work email is set in settings/env, prioritize adding it
-        if settings.WORK_EMAIL and settings.WORK_EMAIL.strip():
-            work_email = settings.WORK_EMAIL.strip()
-            if work_email not in recipients:
-                recipients.append(work_email)
+        # If work email is set in database, prioritize adding it
+        if effective["work_email"]:
+            recipients.append(effective["work_email"])
 
         # Maintenance department mail
-        maint_dept_email = settings.MAINTENANCE_DEPARTMENT_EMAIL.strip()
-        if maint_dept_email and maint_dept_email not in recipients:
-            recipients.append(maint_dept_email)
+        if effective["maintenance_email"] and effective["maintenance_email"] not in recipients:
+            recipients.append(effective["maintenance_email"])
+
+        maint_dept_email = effective["maintenance_email"] or settings.MAINTENANCE_DEPARTMENT_EMAIL.strip()
+        work_email_display = effective["work_email"] or settings.WORK_EMAIL or None
+        target_mobile = effective["maintenance_mobile"] or settings.MAINTENANCE_DEPARTMENT_MOBILE.strip()
+        smtp_port_display = effective["smtp_port"]
+        smtp_ssl_display = effective["smtp_use_ssl"]
 
         # Check if maintenance supervisor has an email in users table
         maint_dept = db.query(Department).filter(Department.id == "maintenance").first()
@@ -63,12 +94,7 @@ class NotificationService:
             supervisor = db.query(User).filter(User.id == maint_dept.supervisor_id).first()
             if supervisor and supervisor.email and supervisor.email not in recipients:
                 recipients.append(supervisor.email)
-
-        # Mobile number for maintenance department alert
-        target_mobile = settings.MAINTENANCE_DEPARTMENT_MOBILE.strip()
-        if maint_dept and maint_dept.supervisor_id:
-            supervisor = db.query(User).filter(User.id == maint_dept.supervisor_id).first()
-            if supervisor and supervisor.phone:
+            if supervisor and supervisor.phone and not effective["maintenance_mobile"]:
                 target_mobile = supervisor.phone
 
         # 2. Build SMTPS Email Content
@@ -83,10 +109,10 @@ Escalation Level: Level {escalation_level}
 Timestamp: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}
 
 ROUTING DESTINATIONS:
-- Work Email Configured: {settings.WORK_EMAIL or 'None (Defaulting to Maintenance Dept)'}
+- Work Email Configured: {work_email_display or 'None (Defaulting to Maintenance Dept)'}
 - Maintenance Department Mail: {maint_dept_email}
 - Maintenance Mobile Number: {target_mobile}
-- SMTPS Protocol: {'Enabled (SSL/TLS)' if settings.SMTP_USE_SSL else 'STARTTLS'}
+- SMTPS Protocol: {'Enabled (SSL/TLS)' if smtp_ssl_display else 'STARTTLS'}
 
 TICKET DETAILS:
 - Ticket Number: #{ticket.ticket_number}
@@ -141,7 +167,7 @@ Maintenance staff and supervisor on duty must acknowledge and respond immediatel
       <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
         <tr>
           <td style="padding: 4px 0; color: #64748B; width: 45%;">Work Email Configured:</td>
-          <td style="padding: 4px 0; font-weight: 700; color: #0F172A;">{settings.WORK_EMAIL or '<span style="color:#94A3B8;">(Not Set)</span>'}</td>
+          <td style="padding: 4px 0; font-weight: 700; color: #0F172A;">{work_email_display or '<span style="color:#94A3B8;">(Not Set)</span>'}</td>
         </tr>
         <tr>
           <td style="padding: 4px 0; color: #64748B;">Maintenance Mail:</td>
@@ -153,7 +179,7 @@ Maintenance staff and supervisor on duty must acknowledge and respond immediatel
         </tr>
         <tr>
           <td style="padding: 4px 0; color: #64748B;">Security Protocol:</td>
-          <td style="padding: 4px 0; font-weight: 700; color: #0284C7;">SMTPS (Port {settings.SMTP_PORT})</td>
+          <td style="padding: 4px 0; font-weight: 700; color: #0284C7;">{'SMTPS (SSL/TLS)' if smtp_ssl_display else 'SMTP (STARTTLS)'} (Port {smtp_port_display})</td>
         </tr>
       </table>
     </div>
@@ -203,12 +229,13 @@ Maintenance staff and supervisor on duty must acknowledge and respond immediatel
         # 3. Perform SMTPS Transmission
         delivery_status = "simulated_smtps"
         smtp_error: Optional[str] = None
+        smtp_host = effective["smtp_host"]
 
-        if settings.SMTP_HOST and settings.SMTP_HOST.strip():
+        if smtp_host:
             try:
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
-                msg["From"] = settings.SMTP_FROM
+                msg["From"] = effective["smtp_from"]
                 msg["To"] = ", ".join(recipients)
                 msg["X-Priority"] = "1"
                 msg["X-Emergency-Escalation-Level"] = str(escalation_level)
@@ -218,20 +245,20 @@ Maintenance staff and supervisor on duty must acknowledge and respond immediatel
                 msg.attach(MIMEText(text_content, "plain"))
                 msg.attach(MIMEText(html_content, "html"))
 
-                if settings.SMTP_USE_SSL:
+                if effective["smtp_use_ssl"]:
                     # Pure SMTPS over SSL (Port 465)
                     ssl_context = ssl.create_default_context()
-                    with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=ssl_context, timeout=10) as server:
-                        if settings.SMTP_USER and settings.SMTP_PASSWORD:
-                            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                        server.sendmail(settings.SMTP_FROM, recipients, msg.as_string())
+                    with smtplib.SMTP_SSL(smtp_host, effective["smtp_port"], context=ssl_context, timeout=10) as server:
+                        if effective["smtp_user"] and effective["smtp_password"]:
+                            server.login(effective["smtp_user"], effective["smtp_password"])
+                        server.sendmail(effective["smtp_from"], recipients, msg.as_string())
                 else:
                     # SMTP with STARTTLS (Port 587)
-                    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
+                    with smtplib.SMTP(smtp_host, effective["smtp_port"], timeout=10) as server:
                         server.starttls()
-                        if settings.SMTP_USER and settings.SMTP_PASSWORD:
-                            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                        server.sendmail(settings.SMTP_FROM, recipients, msg.as_string())
+                        if effective["smtp_user"] and effective["smtp_password"]:
+                            server.login(effective["smtp_user"], effective["smtp_password"])
+                        server.sendmail(effective["smtp_from"], recipients, msg.as_string())
 
                 delivery_status = "delivered (SMTPS & SMS)"
                 logger.info(f"SMTPS escalation successfully delivered to {recipients} for Ticket #{ticket.ticket_number}")
@@ -271,14 +298,15 @@ Maintenance staff and supervisor on duty must acknowledge and respond immediatel
             actor_role="system",
             details=json.dumps({
                 "recipients": recipients,
-                "work_email": settings.WORK_EMAIL or None,
-                "maintenance_department_email": maint_dept_email,
+                "work_email": effective["work_email"] or None,
+                "maintenance_department_email": effective["maintenance_email"],
                 "maintenance_mobile": target_mobile,
                 "escalation_level": escalation_level,
                 "delivery_status": delivery_status,
-                "smtp_host": settings.SMTP_HOST or "simulated",
-                "smtp_port": settings.SMTP_PORT,
-                "smtp_error": smtp_error
+                "smtp_host": smtp_host or "simulated",
+                "smtp_port": effective["smtp_port"],
+                "smtp_error": smtp_error,
+                "source": effective["source"]
             })
         )
         db.add(audit)
@@ -288,9 +316,60 @@ Maintenance staff and supervisor on duty must acknowledge and respond immediatel
             "ticket_number": ticket.ticket_number,
             "escalation_level": escalation_level,
             "recipients": recipients,
-            "work_email": settings.WORK_EMAIL or None,
-            "maintenance_email": maint_dept_email,
+            "work_email": effective["work_email"] or None,
+            "maintenance_email": effective["maintenance_email"],
             "maintenance_mobile": target_mobile,
             "delivery_status": delivery_status,
-            "timestamp": now.isoformat()
+            "timestamp": now.isoformat(),
+            "config_source": effective["source"]
+        }
+
+    @staticmethod
+    def send_test_alert(db: Session, target_email: Optional[str] = None) -> Dict[str, Any]:
+        """Sends an immediate verification test email using effective database SMTPS settings"""
+        effective = NotificationService.get_effective_settings(db)
+        recipient = target_email or effective["work_email"] or effective["maintenance_email"]
+        now = utc_now()
+        smtp_host = effective["smtp_host"]
+
+        subject = "[TEST] CareOps AI SMTPS & Mobile Escalation Verification"
+        body = f"CareOps AI SMTPS test successful. Escalations will be routed to {recipient} and mobile {effective['maintenance_mobile']}."
+
+        delivery_status = "simulated_smtps"
+        smtp_error = None
+
+        if smtp_host and recipient:
+            try:
+                msg = MIMEText(body, "plain")
+                msg["Subject"] = subject
+                msg["From"] = effective["smtp_from"]
+                msg["To"] = recipient
+
+                if effective["smtp_use_ssl"]:
+                    ssl_context = ssl.create_default_context()
+                    with smtplib.SMTP_SSL(smtp_host, effective["smtp_port"], context=ssl_context, timeout=10) as server:
+                        if effective["smtp_user"] and effective["smtp_password"]:
+                            server.login(effective["smtp_user"], effective["smtp_password"])
+                        server.sendmail(effective["smtp_from"], [recipient], msg.as_string())
+                else:
+                    with smtplib.SMTP(smtp_host, effective["smtp_port"], timeout=10) as server:
+                        server.starttls()
+                        if effective["smtp_user"] and effective["smtp_password"]:
+                            server.login(effective["smtp_user"], effective["smtp_password"])
+                        server.sendmail(effective["smtp_from"], [recipient], msg.as_string())
+                delivery_status = "delivered_smtps"
+            except Exception as err:
+                smtp_error = str(err)
+                delivery_status = f"error: {err}"
+        else:
+            delivery_status = "simulated_success"
+
+        return {
+            "success": smtp_error is None,
+            "recipient": recipient,
+            "mobile": effective["maintenance_mobile"],
+            "delivery_status": delivery_status,
+            "smtp_host": smtp_host or "simulated",
+            "source": effective["source"],
+            "error": smtp_error
         }
