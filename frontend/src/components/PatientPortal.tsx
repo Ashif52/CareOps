@@ -33,7 +33,10 @@ import {
   UserCheck,
   Lock,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  Pause,
+  Trash2,
+  Volume2
 } from "lucide-react";
 import { api, formatTime } from "@/lib/api";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
@@ -88,11 +91,27 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordedDuration, setRecordedDuration] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [transcription, setTranscription] = useState<string>("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackTime, setPlaybackTime] = useState(0);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingStartTimeRef = useRef<number>(0);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const initialOffsetRef = useRef<number>(0);
+
+  const formatAudioDuration = (totalSeconds: number) => {
+    if (isNaN(totalSeconds) || totalSeconds < 0) return "0:00";
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = Math.floor(totalSeconds % 60);
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  };
 
   // Submission & Tracking State
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -339,22 +358,78 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
     setStep("form");
   };
 
-  // Web Audio Recording
+  // Clean up audio & recording timers on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  // Web Audio Recording with Accurate Hardware Clock Normalization
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Audio recording is not supported in this browser.");
+        return;
+      }
+
+      // Reset prior audio states
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      setIsPlaying(false);
+      setPlaybackTime(0);
+      setRecordedDuration(0);
+      setRecordingSeconds(0);
+      initialOffsetRef.current = 0;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/aac")) {
+          mimeType = "audio/aac";
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        const elapsedMs = Date.now() - recordingStartTimeRef.current;
+        const finalSecs = Math.max(1, Math.round(elapsedMs / 1000));
+        setRecordedDuration(finalSecs);
+        setRecordingSeconds(finalSecs);
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         const url = URL.createObjectURL(audioBlob);
         setAudioUrl(url);
 
@@ -364,28 +439,117 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
         };
         reader.readAsDataURL(audioBlob);
 
-        setTranscription("Patient voice message recorded for care team.");
+        setTranscription(
+          `Patient voice message recorded for care team (${formatAudioDuration(finalSecs)}).`
+        );
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
+      recordingStartTimeRef.current = Date.now();
       setIsRecording(true);
+
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+        setRecordingSeconds(elapsed);
+        if (elapsed >= 120) {
+          stopRecording();
+        }
+      }, 250);
     } catch (_) {
       alert("Microphone permission required to record audio.");
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
       mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
     }
+    setIsRecording(false);
   };
 
   const resetRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+    }
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+    }
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
     setAudioUrl(null);
     setAudioBase64(null);
     setTranscription("");
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    setRecordedDuration(0);
+    setPlaybackTime(0);
+    setIsPlaying(false);
+    initialOffsetRef.current = 0;
+  };
+
+  // Custom Audio Playback Handlers (Immune to WebM Android hardware timestamp bug)
+  const togglePlayback = () => {
+    const audio = audioPlayerRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      if (playbackTime >= recordedDuration) {
+        audio.currentTime = initialOffsetRef.current || 0;
+        setPlaybackTime(0);
+      }
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => console.error("Playback error:", err));
+    }
+  };
+
+  const handleAudioTimeUpdate = () => {
+    const audio = audioPlayerRef.current;
+    if (!audio) return;
+
+    let curr = audio.currentTime;
+    // Normalize Android WebM system uptime clock offset (e.g. 10800s / ~3 hours)
+    if (curr > 3600) {
+      if (!initialOffsetRef.current) {
+        initialOffsetRef.current = curr;
+      }
+      curr = curr - initialOffsetRef.current;
+    }
+
+    curr = Math.max(0, Math.min(recordedDuration, Math.floor(curr)));
+    setPlaybackTime(curr);
+  };
+
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+    setPlaybackTime(0);
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.currentTime = initialOffsetRef.current || 0;
+    }
+  };
+
+  const handleSeek = (seconds: number) => {
+    const target = Math.max(0, Math.min(recordedDuration, seconds));
+    setPlaybackTime(target);
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.currentTime = (initialOffsetRef.current || 0) + target;
+    }
   };
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -740,49 +904,119 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                 </div>
 
                 {/* Voice Note Recording Option */}
-                <div className="p-3.5 rounded-2xl bg-white border-2 border-[#CBD5E1] space-y-2">
+                <div className="p-3.5 rounded-2xl bg-white border-2 border-[#CBD5E1] space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#0F172A]">Optional Voice Note</span>
+                    <span className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
+                      <Mic className="h-4 w-4 text-[#176B63]" />
+                      <span>Optional Voice Note</span>
+                    </span>
                     {audioUrl && (
                       <button
                         type="button"
                         onClick={resetRecording}
-                        className="text-[11px] text-[#DC2626] font-bold hover:underline"
+                        className="text-[11px] text-[#DC2626] font-bold hover:underline cursor-pointer flex items-center gap-1"
                       >
-                        Delete
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Delete</span>
                       </button>
                     )}
                   </div>
 
                   {!audioUrl ? (
-                    <div className="flex items-center gap-3">
+                    <div>
                       {!isRecording ? (
-                        <button
-                          type="button"
-                          onClick={startRecording}
-                          className="px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-all"
-                        >
-                          <Mic className="h-4 w-4" />
-                          <span>Record Voice Message</span>
-                        </button>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={startRecording}
+                            className="px-4 py-2.5 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs shrink-0"
+                          >
+                            <Mic className="h-4 w-4" />
+                            <span>Record Voice Message</span>
+                          </button>
+                          <span className="text-[11px] text-[#64748B]">
+                            Speak details in your language (hands-free)
+                          </span>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={stopRecording}
-                          className="px-4 py-2 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-bold flex items-center gap-2 animate-pulse cursor-pointer transition-all"
-                        >
-                          <Square className="h-4 w-4" />
-                          <span>Stop Recording</span>
-                        </button>
+                        <div className="p-3 bg-[#FEF2F2] rounded-xl border border-[#FCA5A5] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="relative flex h-3 w-3">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="w-1 h-3 bg-[#DC2626] rounded-full animate-pulse" />
+                              <span className="w-1 h-5 bg-[#DC2626] rounded-full animate-pulse delay-75" />
+                              <span className="w-1 h-2 bg-[#DC2626] rounded-full animate-pulse delay-150" />
+                            </div>
+                            <span className="text-xs font-mono font-bold text-[#DC2626]">
+                              Recording: {formatAudioDuration(recordingSeconds)}
+                            </span>
+                            <span className="text-[11px] text-[#991B1B]">(Max 2:00)</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={stopRecording}
+                            className="px-4 py-2 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-sm shrink-0"
+                          >
+                            <Square className="h-3.5 w-3.5 fill-current" />
+                            <span>Stop Recording</span>
+                          </button>
+                        </div>
                       )}
-                      <span className="text-[11px] text-[#64748B]">
-                        {isRecording ? "Listening to your voice..." : "Speak details in your language"}
-                      </span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <audio controls src={audioUrl} className="h-8 w-full max-w-xs" />
-                      <span className="text-[11px] text-[#16805D] font-bold">Recorded ✓</span>
+                    <div className="p-3 bg-[#F0FDF4] rounded-xl border border-[#BBF7D0] space-y-2.5">
+                      <audio
+                        ref={audioPlayerRef}
+                        src={audioUrl}
+                        preload="auto"
+                        onTimeUpdate={handleAudioTimeUpdate}
+                        onEnded={handleAudioEnded}
+                        className="hidden"
+                      />
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={togglePlayback}
+                          className="h-9 w-9 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white flex items-center justify-center shrink-0 shadow-sm cursor-pointer transition-transform active:scale-95"
+                          title={isPlaying ? "Pause" : "Play"}
+                        >
+                          {isPlaying ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4 fill-current ml-0.5" />
+                          )}
+                        </button>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between text-[11px] font-mono font-bold text-[#17212F] mb-1">
+                            <span className="text-[#176B63]">
+                              {formatAudioDuration(playbackTime)}
+                            </span>
+                            <span className="text-[#64748B]">
+                              {formatAudioDuration(recordedDuration)}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={recordedDuration || 1}
+                            value={playbackTime}
+                            onChange={(e) => handleSeek(Number(e.target.value))}
+                            className="w-full h-1.5 bg-[#CBD5E1] rounded-lg appearance-none cursor-pointer accent-[#176B63]"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[11px] font-bold text-[#16805D] bg-[#DCFCE7] px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <span>Recorded ✓</span>
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

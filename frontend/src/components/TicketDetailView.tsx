@@ -17,7 +17,9 @@ import {
   Calendar,
   Layers,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  Volume2,
+  Loader2
 } from "lucide-react";
 import { Ticket, User as UserType, getFileUrl, formatTime, formatDateTime } from "@/lib/api";
 
@@ -58,6 +60,7 @@ export function TicketDetailView({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadStage, setUploadStage] = useState<"before" | "after">("before");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isActionPending, setIsActionPending] = useState(false);
 
   const canAcknowledge = ticket.status === "submitted" || ticket.status === "assigned";
   const canStartWork = ticket.status === "acknowledged";
@@ -137,19 +140,49 @@ export function TicketDetailView({
           <div className="flex items-center gap-2">
             {canAcknowledge && (
               <button
-                onClick={() => onAcknowledge(ticket.id)}
-                className="px-3 py-1.5 rounded-lg bg-[#176B63] text-white font-semibold hover:bg-[#10574F] transition-all shadow-sm"
+                disabled={isActionPending}
+                onClick={async () => {
+                  setIsActionPending(true);
+                  try {
+                    await onAcknowledge(ticket.id);
+                  } finally {
+                    setIsActionPending(false);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[#176B63] text-white font-semibold hover:bg-[#10574F] transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
               >
-                Acknowledge Receipt
+                {isActionPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Acknowledging...</span>
+                  </>
+                ) : (
+                  <span>Acknowledge Receipt</span>
+                )}
               </button>
             )}
 
             {canStartWork && (
               <button
-                onClick={() => onStartWork(ticket.id)}
-                className="px-3 py-1.5 rounded-lg bg-[#3868C9] text-white font-semibold hover:bg-[#2A52A3] transition-all shadow-sm"
+                disabled={isActionPending}
+                onClick={async () => {
+                  setIsActionPending(true);
+                  try {
+                    await onStartWork(ticket.id);
+                  } finally {
+                    setIsActionPending(false);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[#3868C9] text-white font-semibold hover:bg-[#2A52A3] transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
               >
-                Start Work
+                {isActionPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Starting...</span>
+                  </>
+                ) : (
+                  <span>Start Work</span>
+                )}
               </button>
             )}
 
@@ -233,12 +266,29 @@ export function TicketDetailView({
                 <p className="text-xs text-[#667085] leading-relaxed bg-[#F7F8FA] p-3.5 rounded-xl border border-[#E5E9EF]">
                   {ticket.description}
                 </p>
-                {ticket.voice_transcription && (
-                  <div className="p-3 bg-[#EEF4FD] rounded-xl border border-[#BFDBFE] text-xs">
-                    <span className="font-semibold text-[#3868C9] block mb-1">
-                      Patient Voice Recording Audio Transcription:
-                    </span>
-                    <p className="text-[#17212F] italic">"{ticket.voice_transcription}"</p>
+                {(ticket.voice_transcription || ticket.voice_recording_url) && (
+                  <div className="p-3.5 bg-[#F0FDF4] rounded-xl border border-[#BBF7D0] text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#16805D] flex items-center gap-1.5">
+                        <Volume2 className="h-4 w-4" />
+                        <span>Patient Bedside Voice Note</span>
+                      </span>
+                      <span className="text-[11px] text-[#64748B] font-medium">Recorded at Room</span>
+                    </div>
+                    {ticket.voice_transcription && (
+                      <p className="text-[#17212F] italic bg-white/70 p-2.5 rounded-lg border border-[#DCFCE7]">
+                        "{ticket.voice_transcription}"
+                      </p>
+                    )}
+                    {ticket.voice_recording_url && (
+                      <div className="pt-1">
+                        <audio
+                          controls
+                          src={getFileUrl(ticket.voice_recording_url)}
+                          className="w-full h-8 max-w-md"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

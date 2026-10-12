@@ -13,7 +13,8 @@ import {
   Check,
   RotateCcw,
   Sparkles,
-  UserCheck
+  UserCheck,
+  Loader2
 } from "lucide-react";
 import { Ticket, User } from "@/lib/api";
 
@@ -35,6 +36,7 @@ export function StaffWorkspace({
   const [filterTab, setFilterTab] = useState<
     "all" | "unacknowledged" | "due_soon" | "in_progress" | "overdue" | "awaiting_verification" | "completed"
   >("all");
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   const myTickets = tickets.filter(
     (t) => !currentUser?.department_id || t.department_id === currentUser.department_id || t.assigned_staff_id === currentUser?.id
@@ -251,25 +253,55 @@ export function StaffWorkspace({
                 <div className="pt-2">
                   {ticket.status === "assigned" || ticket.status === "submitted" ? (
                     <button
-                      onClick={(e) => {
+                      disabled={actionLoadingId === ticket.id}
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        onAcknowledge(ticket.id);
+                        setActionLoadingId(ticket.id);
+                        try {
+                          await onAcknowledge(ticket.id);
+                        } finally {
+                          setActionLoadingId(null);
+                        }
                       }}
-                      className="w-full py-3 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm font-bold shadow-md shadow-[#176B63]/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      className="w-full py-3 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm font-bold shadow-md shadow-[#176B63]/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                     >
-                      <span>1. Acknowledge Receipt</span>
-                      <ArrowRight className="h-4 w-4" />
+                      {actionLoadingId === ticket.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Acknowledging Receipt...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>1. Acknowledge Receipt</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
                     </button>
                   ) : ticket.status === "acknowledged" ? (
                     <button
-                      onClick={(e) => {
+                      disabled={actionLoadingId === ticket.id}
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        onStartWork(ticket.id);
+                        setActionLoadingId(ticket.id);
+                        try {
+                          await onStartWork(ticket.id);
+                        } finally {
+                          setActionLoadingId(null);
+                        }
                       }}
-                      className="w-full py-3 rounded-2xl bg-[#3868C9] hover:bg-[#2A52A3] text-white text-sm font-bold shadow-md shadow-[#3868C9]/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      className="w-full py-3 rounded-2xl bg-[#3868C9] hover:bg-[#2A52A3] text-white text-sm font-bold shadow-md shadow-[#3868C9]/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                     >
-                      <span>2. Start Repair Work</span>
-                      <ArrowRight className="h-4 w-4" />
+                      {actionLoadingId === ticket.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Starting Repair...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>2. Start Repair Work</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
                     </button>
                   ) : ticket.status === "in_progress" ? (
                     <button

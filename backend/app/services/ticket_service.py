@@ -131,6 +131,10 @@ class TicketService:
 
     @staticmethod
     def acknowledge_ticket(db: Session, ticket: Ticket, user: User, note: Optional[str] = None) -> Ticket:
+        # Idempotent: If already acknowledged, in_progress, resolution_submitted, or closed, return safely
+        if ticket.status in ["acknowledged", "in_progress", "resolution_submitted", "closed"]:
+            return ticket
+
         if ticket.status not in ["submitted", "assigned"]:
             raise HTTPException(status_code=400, detail=f"Cannot acknowledge ticket in '{ticket.status}' status")
             
@@ -162,6 +166,10 @@ class TicketService:
 
     @staticmethod
     def start_work(db: Session, ticket: Ticket, user: User, note: Optional[str] = None) -> Ticket:
+        # Idempotent: If already in_progress or later, return safely
+        if ticket.status in ["in_progress", "resolution_submitted", "closed"]:
+            return ticket
+
         if ticket.status not in ["assigned", "acknowledged"]:
             raise HTTPException(status_code=400, detail=f"Cannot start work from '{ticket.status}' status")
             

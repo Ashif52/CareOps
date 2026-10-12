@@ -315,7 +315,10 @@ export default function CareOpsApp() {
   // 4. Ticket Actions
   const handleAcknowledge = async (id: number) => {
     try {
-      await api.acknowledgeTicket(id);
+      const updated = await api.acknowledgeTicket(id);
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, ...updated, status: "acknowledged" } : t))
+      );
       await loadAllData();
     } catch (err: any) {
       alert(`Acknowledgement error: ${err.message}`);
@@ -324,7 +327,10 @@ export default function CareOpsApp() {
 
   const handleStartWork = async (id: number) => {
     try {
-      await api.startWork(id);
+      const updated = await api.startWork(id);
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, ...updated, status: "in_progress" } : t))
+      );
       await loadAllData();
     } catch (err: any) {
       alert(`Start work error: ${err.message}`);
