@@ -39,7 +39,7 @@ export function RoomQRPlacardModal({
 }: RoomQRPlacardModalProps) {
   const [copied, setCopied] = useState(false);
   const [lanIP, setLanIP] = useState("192.168.31.219");
-  const [hostMode, setHostMode] = useState<"lan" | "localhost" | "current" | "custom">("lan");
+  const [hostMode, setHostMode] = useState<"lan" | "localhost" | "current" | "custom">("current");
   const [customHost, setCustomHost] = useState("");
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -143,9 +143,11 @@ export function RoomQRPlacardModal({
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#16805D]"></span>
             </span>
             <div>
-              <strong className="text-[#16805D] block">Connected to Wi-Fi Network</strong>
+              <strong className="text-[#16805D] block">
+                {hostMode === "current" ? "Public Mobile Scannable" : "Local Wi-Fi Network"}
+              </strong>
               <span className="text-[#475569] text-[11px]">
-                Active IP: <code className="font-mono text-[#0F172A] font-bold">{lanIP}:3000</code>
+                Domain: <code className="font-mono text-[#0F172A] font-bold">{targetURL.replace(/\/patient\/qr\/.*$/, "")}</code>
               </span>
             </div>
           </div>
