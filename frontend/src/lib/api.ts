@@ -504,5 +504,9 @@ export const api = {
     fetchWithAuth(`/staff/${id}/reset-password`, { method: "POST", body: JSON.stringify(data) }),
   getRolesMetadata: () => fetchWithAuth("/staff/meta/roles"),
   getSecurityEvents: () => fetchWithAuth("/staff/meta/security-events"),
+
+  // System & Superadmin Operations
+  clearDatabase: (data: { mode: "purge_operational" | "reset_all"; confirm_phrase: string }) =>
+    fetchWithAuth("/system/clear-database", { method: "POST", body: JSON.stringify(data) }),
 };
 

@@ -163,6 +163,16 @@ def run_migrations():
                 "department_id": None,
                 "phone": "+91 98765 44405",
                 "avatar_url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150"
+            },
+            {
+                "email": "superadmin@careops.hospital",
+                "name": "System Superadmin",
+                "employee_id": "EMP-ROOT-0001",
+                "designation": "Root Platform & Security Super Administrator",
+                "role": "superadmin",
+                "department_id": None,
+                "phone": "+91 98765 00000",
+                "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
             }
         ]
 
@@ -185,6 +195,9 @@ def run_migrations():
                 )
                 db.add(new_u)
                 logger.info(f"Provisioned personnel: {p['name']} ({p['role']})")
+            elif exists.role != p["role"] and p["role"] == "superadmin":
+                exists.role = "superadmin"
+                db.add(exists)
 
         db.commit()
         logger.info("Enterprise IAM backfill completed successfully.")

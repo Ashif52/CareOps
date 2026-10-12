@@ -53,6 +53,12 @@ export function Header({
 
   const demoAccounts = [
     {
+      name: "System Superadmin",
+      role: "Superadmin (Root)",
+      email: "superadmin@careops.hospital",
+      desc: "Database purge & root platform authority",
+    },
+    {
       name: "Dr. Alistair Vance",
       role: "Administrator",
       email: "admin@careops.hospital",
@@ -165,8 +171,12 @@ export function Header({
           >
             <UserCheck className="h-4 w-4 text-[#176B63]" />
             <span className="hidden sm:inline">Role:</span>
-            <span className="font-black text-[#176B63] capitalize">
-              {currentUser?.role || "Admin"}
+            <span
+              className={`font-black capitalize ${
+                currentUser?.role === "superadmin" ? "text-[#DC2626]" : "text-[#176B63]"
+              }`}
+            >
+              {currentUser?.role === "superadmin" ? "Superadmin (Root)" : currentUser?.role || "Admin"}
             </span>
           </button>
 

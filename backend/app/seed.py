@@ -34,7 +34,16 @@ def seed_database():
             avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
             hashed_password=pw_hash
         )
-        db.add(admin)
+        superadmin = User(
+            email="superadmin@careops.hospital",
+            name="System Superadmin",
+            role="superadmin",
+            department_id=None,
+            phone="+91 98765 00000",
+            avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            hashed_password=pw_hash
+        )
+        db.add_all([admin, superadmin])
         db.flush()
 
         sup_mnt = User(

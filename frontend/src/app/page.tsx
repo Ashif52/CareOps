@@ -16,7 +16,7 @@ import { CreateTicketModal } from "@/components/CreateTicketModal";
 import { PortalLoginGateway } from "@/components/PortalLoginGateway";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
 import { StaffAccessManagementView } from "@/components/StaffAccessManagementView";
-import { QrCode, Bell, Sparkles } from "lucide-react";
+import { QrCode, Bell, Sparkles, Lock, Trash2, CheckCircle2 } from "lucide-react";
 
 import {
   api,
@@ -67,6 +67,38 @@ export default function CareOpsApp() {
     department_id: string;
     time: string;
   } | null>(null);
+
+  // Superadmin Database Wipe State
+  const [clearMode, setClearMode] = useState<"purge_operational" | "reset_all">("purge_operational");
+  const [clearConfirmText, setClearConfirmText] = useState("");
+  const [isClearingDb, setIsClearingDb] = useState(false);
+  const [clearDbMessage, setClearDbMessage] = useState<string | null>(null);
+
+  const handleClearDatabase = async () => {
+    if (clearConfirmText.trim() !== "CONFIRM_CLEAR") {
+      alert("Confirmation mismatch: You must type 'CONFIRM_CLEAR' to execute database purge.");
+      return;
+    }
+    if (!confirm("Are you ABSOLUTELY sure? This action cannot be undone.")) {
+      return;
+    }
+    setIsClearingDb(true);
+    setClearDbMessage(null);
+    try {
+      const res: any = await api.clearDatabase({
+        mode: clearMode,
+        confirm_phrase: "CONFIRM_CLEAR",
+      });
+      setClearDbMessage(res.message);
+      setClearConfirmText("");
+      await loadAllData();
+      alert(`Success: ${res.message}`);
+    } catch (err: any) {
+      alert(`Database purge error: ${err.message || err}`);
+    } finally {
+      setIsClearingDb(false);
+    }
+  };
 
   // Check URL query parameters for direct QR scan link (e.g. ?room=CARE-RM204-7X9Q)
   useEffect(() => {
@@ -257,7 +289,7 @@ export default function CareOpsApp() {
       setCurrentUser(loginRes.user);
       if (loginRes.user.role === "staff") {
         setCurrentTab("my-department");
-      } else if (loginRes.user.role === "admin" && currentTab === "my-department") {
+      } else if ((loginRes.user.role === "admin" || loginRes.user.role === "superadmin") && currentTab === "my-department") {
         setCurrentTab("overview");
       }
       loadAllData();
@@ -668,6 +700,136 @@ export default function CareOpsApp() {
                   <strong>Clinical Safety Enforced:</strong> Critical priority tickets and dynamic appliances (e.g. ceiling fans, pumps) strictly require video frame motion verification or mandatory human sign-off before closure.
                 </div>
               </div>
+
+              {/* Superadmin Database Controls vs Locked Security Notice */}
+              {currentUser?.role === "superadmin" ? (
+                <div className="bg-white p-6 rounded-2xl border-2 border-[#DC2626] shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-[#FEE2E2] text-[#DC2626]">
+                        <Trash2 className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-[#DC2626] flex items-center gap-2">
+                          <span>Superadmin Danger Zone: Clear Database</span>
+                          <span className="px-2 py-0.5 rounded-md bg-[#DC2626] text-white text-[10px] font-black uppercase">
+                            Root Access Granted
+                          </span>
+                        </h3>
+                        <p className="text-xs text-[#64748B]">
+                          Permanently clear operational tickets, photos, voice notes, and verification logs.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {clearDbMessage && (
+                    <div className="p-3 rounded-xl bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-xs font-bold flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>{clearDbMessage}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 pt-2 border-t border-[#F1F5F9] text-xs">
+                    <div>
+                      <label className="font-bold text-[#17212F] block mb-1.5">Purge Mode</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label
+                          className={`p-3.5 rounded-xl border-2 flex flex-col gap-1 cursor-pointer transition-all ${
+                            clearMode === "purge_operational"
+                              ? "border-[#DC2626] bg-[#FEF2F2]"
+                              : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 font-bold text-[#0F172A]">
+                            <input
+                              type="radio"
+                              name="clearMode"
+                              value="purge_operational"
+                              checked={clearMode === "purge_operational"}
+                              onChange={() => setClearMode("purge_operational")}
+                            />
+                            <span>Purge Operational Records (Recommended)</span>
+                          </div>
+                          <span className="text-[11px] text-[#64748B] pl-5">
+                            Wipes all Tickets, Evidence & Notes (0 tickets). Leaves Rooms, Staff & Departments intact for clean production use.
+                          </span>
+                        </label>
+
+                        <label
+                          className={`p-3.5 rounded-xl border-2 flex flex-col gap-1 cursor-pointer transition-all ${
+                            clearMode === "reset_all"
+                              ? "border-[#DC2626] bg-[#FEF2F2]"
+                              : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 font-bold text-[#0F172A]">
+                            <input
+                              type="radio"
+                              name="clearMode"
+                              value="reset_all"
+                              checked={clearMode === "reset_all"}
+                              onChange={() => setClearMode("reset_all")}
+                            />
+                            <span>Reset to Fresh Factory Demo Seed</span>
+                          </div>
+                          <span className="text-[11px] text-[#64748B] pl-5">
+                            Wipes existing tickets and re-seeds clean sample demonstration tickets across nursing, maintenance, etc.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] text-[#92400E] text-xs">
+                      <strong>Safety Protection:</strong> Type <code className="bg-white/80 px-1.5 py-0.5 rounded font-bold border border-[#FCD34D]">CONFIRM_CLEAR</code> in the box below to unlock the purge button.
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <input
+                        type="text"
+                        placeholder="Type CONFIRM_CLEAR"
+                        value={clearConfirmText}
+                        onChange={(e) => setClearConfirmText(e.target.value)}
+                        className="flex-1 p-2.5 rounded-xl border-2 border-[#CBD5E1] font-mono text-xs focus:outline-none focus:border-[#DC2626]"
+                      />
+                      <button
+                        disabled={clearConfirmText.trim() !== "CONFIRM_CLEAR" || isClearingDb}
+                        onClick={handleClearDatabase}
+                        className={`px-5 py-2.5 rounded-xl font-black text-xs text-white transition-all shadow-sm flex items-center justify-center gap-2 ${
+                          clearConfirmText.trim() === "CONFIRM_CLEAR" && !isClearingDb
+                            ? "bg-[#DC2626] hover:bg-[#B91C1C] cursor-pointer shadow-red-200"
+                            : "bg-[#CBD5E1] cursor-not-allowed opacity-60"
+                        }`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span>{isClearingDb ? "Purging Database..." : "Execute Database Purge"}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white p-6 rounded-2xl border-2 border-[#E5E9EF] shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-[#F1F5F9] text-[#64748B]">
+                        <Lock className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-[#0F172A]">Database Purge & Factory Reset</h3>
+                        <p className="text-xs text-[#64748B]">
+                          Permanent data clearance & table wipe controls
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5] font-black text-xs uppercase tracking-wider">
+                      🔒 Superadmin Clearance Required
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs text-[#475467] leading-relaxed">
+                    <strong>Access Restricted:</strong> You are signed in as <strong>{currentUser?.name || "Administrator"}</strong> ({currentUser?.role}). Only the authenticated <strong>System Superadmin</strong> (<code>superadmin@careops.hospital</code>) has authorization to execute database purges. Standard hospital administrators cannot view or run destructive operations.
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>

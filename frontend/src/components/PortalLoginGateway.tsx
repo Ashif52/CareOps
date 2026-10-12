@@ -34,6 +34,16 @@ export function PortalLoginGateway({
 
   const demoPersonas = [
     {
+      id: "superadmin",
+      label: "System Superadmin (Root)",
+      name: "System Superadmin",
+      email: "superadmin@careops.hospital",
+      role: "superadmin",
+      badge: "Superadmin Only",
+      badgeColor: "bg-[#FDF2F2] text-[#DC2626] border-[#FCA5A5]",
+      desc: "Exclusive root authority to wipe/purge database & manage system policies",
+    },
+    {
       id: "admin",
       label: "Hospital Administrator",
       name: "Dr. Alistair Vance",

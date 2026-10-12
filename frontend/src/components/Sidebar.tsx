@@ -100,7 +100,11 @@ export function Sidebar({
     },
   ];
 
-  const navItems = allNavItems.filter((item) => item.roles.includes(userRole));
+  const navItems = allNavItems.filter(
+    (item) =>
+      item.roles.includes(userRole) ||
+      (userRole === "superadmin" && (item.roles.includes("admin") || item.roles.includes("supervisor")))
+  );
 
   return (
     <aside
@@ -120,7 +124,13 @@ export function Sidebar({
                 CareOps <span className="text-[#176B63]">AI</span>
               </span>
               <span className="text-xs text-[#334155] tracking-wider font-black uppercase">
-                {userRole === "admin" ? "Admin Portal" : userRole === "supervisor" ? "Supervisor View" : "Staff Portal"}
+                {userRole === "superadmin"
+                  ? "Superadmin Portal"
+                  : userRole === "admin"
+                  ? "Admin Portal"
+                  : userRole === "supervisor"
+                  ? "Supervisor View"
+                  : "Staff Portal"}
               </span>
             </div>
           )}
@@ -218,7 +228,9 @@ export function Sidebar({
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
                   className={`text-xs uppercase font-black px-2.5 py-0.5 rounded-lg tracking-wider border-2 ${
-                    userRole === "admin"
+                    userRole === "superadmin"
+                      ? "bg-[#FDF2F2] text-[#DC2626] border-[#FCA5A5]"
+                      : userRole === "admin"
                       ? "bg-[#E8F3F1] text-[#176B63] border-[#99F6E4]"
                       : userRole === "supervisor"
                       ? "bg-[#FEF7EC] text-[#B7791F] border-[#FAD7A0]"
