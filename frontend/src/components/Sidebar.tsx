@@ -16,7 +16,8 @@ import {
   ChevronRight,
   ShieldCheck,
   UserCheck,
-  LogOut
+  LogOut,
+  Star
 } from "lucide-react";
 import { User } from "@/lib/api";
 
@@ -97,6 +98,13 @@ export function Sidebar({
       label: "Audit Logs",
       icon: ScrollText,
       roles: ["admin"],
+    },
+    {
+      id: "reviews",
+      label: "Reputation & Reviews",
+      icon: Star,
+      badge: "Google AI",
+      roles: ["admin", "supervisor", "staff"],
     },
     {
       id: "settings",

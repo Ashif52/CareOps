@@ -335,6 +335,156 @@ export interface AuditLog {
   created_at: string;
 }
 
+export interface GoogleLocation {
+  id: number;
+  integration_id: number;
+  google_location_id: string;
+  location_name: string;
+  store_code?: string | null;
+  address?: string | null;
+  phone_number?: string | null;
+  website_url?: string | null;
+  average_rating: number;
+  total_reviews_count: number;
+  is_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoogleIntegration {
+  id: number;
+  hospital_id: string;
+  account_id: string;
+  account_email?: string | null;
+  account_name?: string | null;
+  status: "connected" | "disconnected" | "error" | "token_expired";
+  last_sync_at?: string | null;
+  last_sync_status?: string | null;
+  last_sync_message?: string | null;
+  sync_frequency_minutes: number;
+  created_at: string;
+  updated_at: string;
+  locations: GoogleLocation[];
+}
+
+export interface ReviewAIAnalysis {
+  id: number;
+  review_id: number;
+  detected_topics: string[];
+  sentiment: "positive" | "neutral" | "negative";
+  sentiment_score?: number | null;
+  severity: "low" | "medium" | "high" | "critical";
+  suggested_department?: string | null;
+  department_confidence?: number | null;
+  review_summary?: string | null;
+  possible_root_causes: string[];
+  recommended_actions: string[];
+  evidence_needed?: string | null;
+  suggested_public_reply?: string | null;
+  reply_safety_passed: boolean;
+  model_name?: string | null;
+  confidence: number;
+  human_review_required: boolean;
+  created_at: string;
+}
+
+export interface ReviewAlert {
+  id: number;
+  review_id: number;
+  star_rating: number;
+  severity: "critical" | "high" | "medium" | "normal";
+  status: "pending" | "acknowledged" | "investigating" | "resolved" | "dismissed";
+  issue_summary: string;
+  suggested_department?: string | null;
+  recommended_action?: string | null;
+  notification_sent: boolean;
+  notification_provider?: string | null;
+  notification_error?: string | null;
+  acknowledged_by?: number | null;
+  acknowledged_at?: string | null;
+  created_at: string;
+}
+
+export interface ReviewCorrectiveAction {
+  id: number;
+  task_code: string;
+  review_id: number;
+  title: string;
+  description: string;
+  department_id: string;
+  assigned_to_id?: number | null;
+  priority: "urgent" | "high" | "medium" | "low";
+  due_date?: string | null;
+  investigation_notes?: string | null;
+  root_cause_assessment?: string | null;
+  corrective_action?: string | null;
+  preventive_action?: string | null;
+  status: "New" | "Assigned" | "Investigating" | "Action Required" | "Pending Verification" | "Completed" | "Reopened";
+  completion_evidence?: string | null;
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoogleReview {
+  id: number;
+  integration_id: number;
+  location_id: number;
+  google_review_id: string;
+  reviewer_name: string;
+  reviewer_photo_url?: string | null;
+  star_rating: number;
+  review_text?: string | null;
+  review_create_time: string;
+  review_update_time?: string | null;
+  google_review_url?: string | null;
+  detected_at: string;
+  is_updated: boolean;
+  previous_star_rating?: number | null;
+  is_below_threshold: boolean;
+  alert_triggered: boolean;
+  assigned_department?: string | null;
+  assigned_owner_id?: number | null;
+  investigation_status: "new" | "triaged" | "investigating" | "action_taken" | "closed";
+  public_reply_status: "not_replied" | "drafted" | "approved" | "published" | "dismissed";
+  public_reply_draft?: string | null;
+  public_reply_published?: string | null;
+  public_reply_published_at?: string | null;
+  internal_notes?: string | null;
+  linked_ticket_id?: number | null;
+  location?: GoogleLocation | null;
+  ai_analysis?: ReviewAIAnalysis | null;
+  alerts?: ReviewAlert[];
+  corrective_actions?: ReviewCorrectiveAction[];
+}
+
+export interface ReviewChatMessage {
+  id: number;
+  conversation_id: string;
+  sender_role: "user" | "assistant" | "system";
+  content: string;
+  grounded_review_id?: number | null;
+  suggested_action_type?: string | null;
+  created_at: string;
+}
+
+export interface ReviewSummary {
+  total_reviews: number;
+  average_rating: number;
+  rating_distribution: Record<string, number>;
+  below_threshold_count: number;
+  unacknowledged_alerts_count: number;
+  pending_corrective_actions_count: number;
+  public_reply_stats: {
+    not_replied: number;
+    drafted: number;
+    approved: number;
+    published: number;
+  };
+  department_breakdown: Record<string, number>;
+}
+
 // Token helper
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -508,5 +658,91 @@ export const api = {
   // System & Superadmin Operations
   clearDatabase: (data: { mode: "purge_operational" | "reset_all"; confirm_phrase: string }) =>
     fetchWithAuth("/system/clear-database", { method: "POST", body: JSON.stringify(data) }),
+
+  // Google Business Profile Integration
+  getGoogleIntegrationStatus: () => fetchWithAuth("/integrations/google/status"),
+  getGoogleAuthUrl: () => fetchWithAuth("/integrations/google/auth-url"),
+  submitGoogleOAuthCallback: (code: string, state: string) =>
+    fetchWithAuth(`/integrations/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`, { method: "POST" }),
+  disconnectGoogleIntegration: (revoke?: boolean) =>
+    fetchWithAuth(`/integrations/google/disconnect?revoke=${revoke ? "true" : "false"}`, { method: "POST" }),
+  syncGoogleReviews: () => fetchWithAuth("/integrations/google/sync", { method: "POST" }),
+
+  // Reviews Intelligence
+  getReviewsSummary: () => fetchWithAuth("/reviews/summary"),
+  getReviewsList: (params?: {
+    location_id?: number;
+    min_rating?: number;
+    max_rating?: number;
+    rating?: number;
+    investigation_status?: string;
+    public_reply_status?: string;
+    department?: string;
+    search?: string;
+    limit?: number;
+    skip?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") {
+          searchParams.append(k, String(v));
+        }
+      });
+    }
+    const qs = searchParams.toString();
+    return fetchWithAuth(qs ? `/reviews?${qs}` : "/reviews");
+  },
+  getCriticalReviews: () => fetchWithAuth("/reviews/critical"),
+  getReviewDetail: (id: number) => fetchWithAuth(`/reviews/${id}`),
+  updateReviewNotes: (id: number, notes: string) =>
+    fetchWithAuth(`/reviews/${id}/notes`, { method: "PUT", body: JSON.stringify({ notes }) }),
+  generateReviewReplyDraft: (id: number) =>
+    fetchWithAuth(`/reviews/${id}/reply/draft`, { method: "POST" }),
+  approveReviewReplyDraft: (id: number, draftText?: string) =>
+    fetchWithAuth(`/reviews/${id}/reply/approve`, { method: "POST", body: JSON.stringify({ draft_text: draftText }) }),
+  linkReviewToTicket: (id: number, ticketId: number) =>
+    fetchWithAuth(`/reviews/${id}/link-ticket`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
+
+  // Review Alerts
+  getReviewAlerts: (status?: string) =>
+    fetchWithAuth(status ? `/reviews/alerts?status=${status}` : "/reviews/alerts"),
+  acknowledgeReviewAlert: (alertId: number) =>
+    fetchWithAuth(`/reviews/alerts/${alertId}/acknowledge`, { method: "POST" }),
+
+  // Corrective Actions (CAP)
+  getCorrectiveActions: (params?: { department_id?: string; status?: string; review_id?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") {
+          searchParams.append(k, String(v));
+        }
+      });
+    }
+    const qs = searchParams.toString();
+    return fetchWithAuth(qs ? `/reviews/corrective-actions?${qs}` : "/reviews/corrective-actions");
+  },
+  createCorrectiveAction: (data: {
+    review_id: number;
+    title: string;
+    description: string;
+    department_id: string;
+    assigned_to_id?: number | null;
+    priority?: string;
+    due_date?: string | null;
+    root_cause_assessment?: string | null;
+    corrective_action?: string | null;
+    preventive_action?: string | null;
+  }) => fetchWithAuth("/reviews/corrective-actions", { method: "POST", body: JSON.stringify(data) }),
+  updateCorrectiveAction: (id: number, data: any) =>
+    fetchWithAuth(`/reviews/corrective-actions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  // Copilot Assistant
+  sendReviewChatMessage: (data: {
+    message: string;
+    review_id?: number | null;
+    conversation_id?: string | null;
+  }) => fetchWithAuth("/reviews/chat", { method: "POST", body: JSON.stringify(data) }),
 };
 

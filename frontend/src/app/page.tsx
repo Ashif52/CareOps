@@ -17,6 +17,7 @@ import { PortalLoginGateway } from "@/components/PortalLoginGateway";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
 import { StaffAccessManagementView } from "@/components/StaffAccessManagementView";
 import { AnalyticsReportsView } from "@/components/AnalyticsReportsView";
+import { ReviewsModuleView } from "@/components/reviews/ReviewsModuleView";
 import { QrCode, Bell, Sparkles, Lock, Trash2, CheckCircle2 } from "lucide-react";
 
 import {
@@ -683,6 +684,10 @@ export default function CareOpsApp() {
           )}
 
           {currentTab === "audit" && <AuditLogsView logs={auditLogs} />}
+
+          {currentTab === "reviews" && (
+            <ReviewsModuleView currentUser={currentUser} />
+          )}
 
           {currentTab === "settings" && (
             <div className="p-8 max-w-4xl mx-auto space-y-6">

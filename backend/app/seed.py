@@ -3,7 +3,9 @@ import json
 from app.database import engine, Base, SessionLocal
 from app.models import (
     Department, User, Room, Ticket, Evidence, AIVerificationJob,
-    SLAPolicy, EscalationLog, TicketNote, AuditLog
+    SLAPolicy, EscalationLog, TicketNote, AuditLog,
+    GoogleIntegration, GoogleLocation, GoogleReview, ReviewAlert,
+    ReviewAIAnalysis, ReviewCorrectiveAction
 )
 from app.services.auth_service import get_password_hash
 
@@ -32,6 +34,11 @@ def seed_database():
                 db.add(superadmin)
                 db.commit()
                 print("Added missing superadmin account.")
+            
+            # Ensure Google Business Profile & Reviews are seeded
+            if not db.query(GoogleIntegration).first():
+                seed_google_reviews(db)
+
             print("Database already contains data, skipping full seed.")
             return
 
@@ -511,6 +518,330 @@ def seed_demo_tickets(db: Session):
 
     db.commit()
     print("Demo tickets successfully seeded!")
+
+
+def seed_google_reviews(db):
+    print("Seeding Google Business Profile and live reviews intelligence...")
+    now = utc_now()
+
+    # 1. Connected Integration
+    integration = GoogleIntegration(
+        account_email="hospital.relations@careops.hospital",
+        account_name="CareOps Memorial Health System",
+        status="connected",
+        access_token_encrypted="sandbox_acc_verified_live_token_2026",
+        refresh_token_encrypted="sandbox_ref_verified_live_token_2026",
+        token_expires_at=now + timedelta(days=30),
+        last_sync_at=now - timedelta(minutes=12),
+        locations_count=3
+    )
+    db.add(integration)
+    db.flush()
+
+    # 2. Locations
+    loc1 = GoogleLocation(
+        integration_id=integration.id,
+        google_location_id="locations/careops-main-101",
+        location_name="CareOps University Hospital - Main Campus",
+        address="100 Healthcare Boulevard, Metro Health District",
+        phone_number="+91 98765 00100",
+        average_rating=4.1,
+        total_reviews_count=342,
+        is_active=True
+    )
+    loc2 = GoogleLocation(
+        integration_id=integration.id,
+        google_location_id="locations/careops-cardio-202",
+        location_name="CareOps Advanced Cardiology & Surgical Pavilion",
+        address="104 Healthcare Boulevard, Building B (East Wing)",
+        phone_number="+91 98765 00104",
+        average_rating=4.5,
+        total_reviews_count=188,
+        is_active=True
+    )
+    loc3 = GoogleLocation(
+        integration_id=integration.id,
+        google_location_id="locations/careops-womens-303",
+        location_name="CareOps Maternal & Pediatric Healthcare Center",
+        address="120 CareOps Park, South Ward",
+        phone_number="+91 98765 00120",
+        average_rating=3.8,
+        total_reviews_count=94,
+        is_active=True
+    )
+    db.add_all([loc1, loc2, loc3])
+    db.flush()
+
+    # Staff & Supervisors
+    admin = db.query(User).filter(User.role == "admin").first()
+    admin_id = admin.id if admin else None
+
+    # Review 1: 1-Star Critical Review (Emergency Triage Delay)
+    r1 = GoogleReview(
+        location_id=loc1.id,
+        google_review_id="rev_google_1001",
+        author_name="Kavita Ramachandran",
+        author_photo_url="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100",
+        star_rating=1,
+        review_text="Emergency triage was completely neglected. Brought my elderly father with severe chest tightness and waited over 3 hours without a basic ECG or doctor consultation while staff conversed casually. Highly irresponsible conduct in what is advertised as a Level 1 Trauma center.",
+        original_review_url="https://maps.google.com/?cid=careops_review_1001",
+        review_created_at=now - timedelta(hours=3, minutes=20),
+        is_low_rating_alert=True,
+        alert_priority="critical",
+        investigation_status="investigating",
+        assigned_department_id="doctors",
+        assigned_owner_id=admin_id,
+        internal_notes="[Shift Medical Officer Note]: Registration log indicates patient arrived at 14:15 during mass-casualty highway accident influx. ECG technician was deployed in Resuscitation Bay 1. Triage nurse failed to explain priority delay to waiting family. Clinical Director notified.",
+        public_reply_status="draft_ready",
+        public_reply_draft="Dear Kavita Ramachandran, thank you for bringing your concerns regarding emergency wait time and medical consultation to our leadership's attention. At CareOps University Hospital, our priority is to provide attentive and prompt clinical care to every individual, and we deeply regret that your father's experience did not reflect our standards. Due to healthcare privacy laws, we cannot discuss specific clinical details publicly. Please contact our Medical Director directly at patient.relations@careops.hospital or call +91 98765 00100 so we can immediately review this incident with you."
+    )
+    db.add(r1)
+    db.flush()
+
+    alt1 = ReviewAlert(
+        review_id=r1.id,
+        star_rating=1,
+        priority="critical",
+        alert_status="acknowledged",
+        acknowledged_at=now - timedelta(hours=2),
+        acknowledged_by=admin_id,
+        notification_status="delivered",
+        notification_sent_at=now - timedelta(hours=3, minutes=19)
+    )
+    db.add(alt1)
+
+    ai1 = ReviewAIAnalysis(
+        review_id=r1.id,
+        review_summary="1-star critical complaint regarding emergency triage delay and doctor availability for acute chest pain.",
+        detected_topics=json.dumps(["Waiting time", "Doctor communication"]),
+        sentiment="strongly_negative",
+        severity="critical",
+        suggested_department="doctors",
+        possible_root_causes=json.dumps([
+            "Concurrent mass-casualty triage surge causing bedside diversion",
+            "Lack of proactive status communication from waiting area triage desk",
+            "Delayed escalation to senior cardiology registrar on duty"
+        ]),
+        recommended_actions=json.dumps([
+            "Audit emergency arrival-to-ECG door-to-needle timestamps for reported date",
+            "Mandate immediate communication protocol for triage delays > 30 minutes",
+            "Establish standby clinical registrar roster for chest pain fast-track"
+        ]),
+        evidence_needed=json.dumps(["Emergency registration timestamps", "Triage nurse duty log"]),
+        suggested_public_reply=r1.public_reply_draft,
+        confidence=0.94,
+        human_review_required=True,
+        model_version="careops-reputation-ai-v1.0"
+    )
+    db.add(ai1)
+
+    cap1 = ReviewCorrectiveAction(
+        task_number="CAP-2026-0001",
+        review_id=r1.id,
+        issue_summary="Emergency Chest Pain Triage Door-to-ECG Protocol Enforcement",
+        department_id="doctors",
+        assigned_to_id=admin_id,
+        priority="critical",
+        due_date=now + timedelta(days=1),
+        status="investigating",
+        investigation_notes="Chief Medical Officer reviewing audio logs and triage register.",
+        root_cause="Triage priority communication breakdown during mass trauma event.",
+        corrective_action="Implement mandatory 10-minute ECG benchmark for all chest pain arrivals regardless of casualty influx.",
+        preventive_action="Digital triage board integrated with CareOps alert chime in doctor duty room.",
+        completion_evidence=None
+    )
+    db.add(cap1)
+
+    # Review 2: 2-Star High Alert (Billing & Discharge Coordination Delay)
+    r2 = GoogleReview(
+        location_id=loc1.id,
+        google_review_id="rev_google_1002",
+        author_name="Vikram Sengupta",
+        author_photo_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100",
+        star_rating=2,
+        review_text="Discharge process took almost 5 hours after the physician signed the discharge summary. The billing counter could not explain insurance pre-auth deductions and staff were defensive. Nursing care was good, but discharge coordination is terribly frustrating.",
+        original_review_url="https://maps.google.com/?cid=careops_review_1002",
+        review_created_at=now - timedelta(hours=6, minutes=40),
+        is_low_rating_alert=True,
+        alert_priority="high",
+        investigation_status="action_taken",
+        assigned_department_id="billing",
+        assigned_owner_id=admin_id,
+        internal_notes="[Billing Supervisor Note]: TPA portal was offline for 90 minutes. Physical bill dispatch from pharmacy delayed final tally. Discharged patient waited unnecessarily in corridor.",
+        public_reply_status="approved",
+        public_reply_draft="Dear Vikram Sengupta, thank you for sharing your feedback. While we are glad you experienced good nursing care, we sincerely apologize for the prolonged wait and lack of clarity at the billing counter during discharge. We take billing transparency very seriously. Our Patient Accounts Manager has been tasked with auditing this incident. Please reach out to patient.relations@careops.hospital so we can directly share a clarified statement of your account."
+    )
+    db.add(r2)
+    db.flush()
+
+    alt2 = ReviewAlert(
+        review_id=r2.id,
+        star_rating=2,
+        priority="high",
+        alert_status="acknowledged",
+        acknowledged_at=now - timedelta(hours=5),
+        acknowledged_by=admin_id,
+        notification_status="delivered",
+        notification_sent_at=now - timedelta(hours=6, minutes=38)
+    )
+    db.add(alt2)
+
+    ai2 = ReviewAIAnalysis(
+        review_id=r2.id,
+        review_summary="2-star high-priority review regarding 5-hour discharge delay and insurance billing opacity.",
+        detected_topics=json.dumps(["Billing", "Waiting time", "Nursing service"]),
+        sentiment="negative",
+        severity="high",
+        suggested_department="billing",
+        possible_root_causes=json.dumps([
+            "Third-party administrator (TPA) insurance gateway downtime",
+            "Manual paper routing between pharmacy dispensing and billing cashier"
+        ]),
+        recommended_actions=json.dumps([
+            "Audit discharge cycle time from physician sign-off to final invoice",
+            "Enable digital pre-discharge settlement while patient rests in room"
+        ]),
+        evidence_needed=json.dumps(["TPA submission log", "Pharmacy invoice clearance timestamp"]),
+        suggested_public_reply=r2.public_reply_draft,
+        confidence=0.91,
+        human_review_required=True,
+        model_version="careops-reputation-ai-v1.0"
+    )
+    db.add(ai2)
+
+    cap2 = ReviewCorrectiveAction(
+        task_number="CAP-2026-0002",
+        review_id=r2.id,
+        issue_summary="Discharge Billing Turnaround Time SLA Optimization",
+        department_id="billing",
+        assigned_to_id=admin_id,
+        priority="high",
+        due_date=now + timedelta(days=2),
+        status="action_required",
+        investigation_notes="Billing manager verified 95-minute gap between physician sign-off and cashier receipt.",
+        root_cause="Manual paper voucher transit between pharmacy and main billing.",
+        corrective_action="Institute automated API push from hospital pharmacy straight into patient discharge ledger.",
+        preventive_action="Hard SLA cap: Maximum 90 minutes from physician sign-off to discharge folder handover.",
+        completion_evidence=None
+    )
+    db.add(cap2)
+
+    # Review 3: 3-Star Review (Normal - Proves Rule: NO Low-Rating Alert by Default)
+    r3 = GoogleReview(
+        location_id=loc1.id,
+        google_review_id="rev_google_1003",
+        author_name="Ananya Iyer",
+        author_photo_url="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100",
+        star_rating=3,
+        review_text="Doctors and treatment were very competent. However, the night shift in 4th floor ward was quite noisy with constant call bells and maintenance staff moving trolleys. Room cleanliness was satisfactory.",
+        original_review_url="https://maps.google.com/?cid=careops_review_1003",
+        review_created_at=now - timedelta(days=1, hours=2),
+        is_low_rating_alert=False,
+        alert_priority="none",
+        investigation_status="uninvestigated",
+        assigned_department_id="nursing",
+        public_reply_status="draft_ready",
+        public_reply_draft="Dear Ananya Iyer, thank you for sharing your experience at CareOps University Hospital. We appreciate your balanced perspective and commendation of our doctors. We have notified our night nursing supervisor regarding nighttime noise levels to ensure restful healing for all patients."
+    )
+    db.add(r3)
+    db.flush()
+
+    ai3 = ReviewAIAnalysis(
+        review_id=r3.id,
+        review_summary="3-star review commending medical treatment but noting night ward noise from call bells and trolleys.",
+        detected_topics=json.dumps(["Nursing service", "Maintenance", "Cleanliness"]),
+        sentiment="neutral",
+        severity="medium",
+        suggested_department="nursing",
+        possible_root_causes=json.dumps(["High night call bell volume", "Wheel bearing friction on floor utility trolleys"]),
+        recommended_actions=json.dumps(["Enforce night quiet hours (22:00 - 06:00)", "Lubricate ward service trolley wheels"]),
+        evidence_needed=json.dumps([]),
+        suggested_public_reply=r3.public_reply_draft,
+        confidence=0.86,
+        human_review_required=False,
+        model_version="careops-reputation-ai-v1.0"
+    )
+    db.add(ai3)
+
+    # Review 4: 4-Star Review (Positive Experience)
+    r4 = GoogleReview(
+        location_id=loc2.id,
+        google_review_id="rev_google_1004",
+        author_name="Deepak Verma",
+        author_photo_url="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100",
+        star_rating=4,
+        review_text="Smooth outpatient cardiology consultation with Dr. Varma. Clean premises, modern ECG equipment, and courteous nursing staff. Pharmacy line was slightly slow but overall very reassuring experience.",
+        original_review_url="https://maps.google.com/?cid=careops_review_1004",
+        review_created_at=now - timedelta(days=2, hours=4),
+        is_low_rating_alert=False,
+        alert_priority="none",
+        investigation_status="resolved",
+        assigned_department_id="doctors",
+        public_reply_status="posted",
+        public_reply_draft="Dear Deepak Verma, thank you for visiting CareOps Cardiology Pavilion. We are delighted to hear you had a reassuring consultation with Dr. Varma and our nursing team. We look forward to continuing to serve you."
+    )
+    db.add(r4)
+    db.flush()
+
+    ai4 = ReviewAIAnalysis(
+        review_id=r4.id,
+        review_summary="4-star positive review commending cardiology consultation and nursing, minor pharmacy wait.",
+        detected_topics=json.dumps(["Doctor communication", "Nursing service", "Pharmacy"]),
+        sentiment="positive",
+        severity="low",
+        suggested_department="doctors",
+        possible_root_causes=json.dumps([]),
+        recommended_actions=json.dumps(["Share positive commendation with Dr. Varma and cardiology nursing unit"]),
+        evidence_needed=json.dumps([]),
+        suggested_public_reply=r4.public_reply_draft,
+        confidence=0.92,
+        human_review_required=False,
+        model_version="careops-reputation-ai-v1.0"
+    )
+    db.add(ai4)
+
+    # Review 5: 5-Star Review (Exemplary In-Room Service, Linked to Internal Ticket)
+    t5_ref = db.query(Ticket).first()
+    r5 = GoogleReview(
+        location_id=loc1.id,
+        google_review_id="rev_google_1005",
+        author_name="Sunita Menon",
+        author_photo_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100",
+        star_rating=5,
+        review_text="Outstanding care from admission to discharge in Deluxe Suite 501. The in-room QR code for service requests worked like magic – technician Kiran fixed the AC remote in 12 minutes! World-class patient experience and accountable staff.",
+        original_review_url="https://maps.google.com/?cid=careops_review_1005",
+        review_created_at=now - timedelta(days=3),
+        is_low_rating_alert=False,
+        alert_priority="none",
+        investigation_status="resolved",
+        assigned_department_id="maintenance",
+        linked_ticket_id=t5_ref.id if t5_ref else None,
+        public_reply_status="posted",
+        public_reply_draft="Dear Sunita Menon, thank you so much for your kind words! We are thrilled to hear that your stay in Deluxe Suite 501 was seamless and that our CareOps room QR system served you effectively. Wishing you radiant health!"
+    )
+    db.add(r5)
+    db.flush()
+
+    ai5 = ReviewAIAnalysis(
+        review_id=r5.id,
+        review_summary="5-star glowing commendation for deluxe suite care and rapid QR maintenance response.",
+        detected_topics=json.dumps(["Maintenance", "General service"]),
+        sentiment="positive",
+        severity="low",
+        suggested_department="maintenance",
+        possible_root_causes=json.dumps([]),
+        recommended_actions=json.dumps(["Commend technician Kiran and ward supervisor for exceptional turnaround"]),
+        evidence_needed=json.dumps([]),
+        suggested_public_reply=r5.public_reply_draft,
+        confidence=0.98,
+        human_review_required=False,
+        model_version="careops-reputation-ai-v1.0"
+    )
+    db.add(ai5)
+
+    db.commit()
+    print("Google Business Profile and live reviews intelligence successfully seeded!")
+
 
 if __name__ == "__main__":
     seed_database()

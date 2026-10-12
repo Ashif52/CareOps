@@ -251,3 +251,172 @@ class AuditLog(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
     
     ticket = relationship("Ticket", back_populates="audit_logs")
+
+
+# ==============================================================================
+# GOOGLE BUSINESS PROFILE & REVIEWS INTELLIGENCE MODELS
+# ==============================================================================
+
+class GoogleIntegration(Base):
+    __tablename__ = "google_integrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_email = Column(String(150), nullable=False)
+    account_name = Column(String(150), nullable=True)
+    status = Column(String(30), default="connected")  # "connected", "disconnected", "error", "needs_reauth"
+    access_token_encrypted = Column(Text, nullable=True)
+    refresh_token_encrypted = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    locations_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    locations = relationship("GoogleLocation", back_populates="integration", cascade="all, delete-orphan")
+
+
+class GoogleLocation(Base):
+    __tablename__ = "google_locations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    integration_id = Column(Integer, ForeignKey("google_integrations.id", ondelete="CASCADE"), nullable=False)
+    google_location_id = Column(String(100), unique=True, index=True, nullable=False)  # e.g., "locations/careops-main-101"
+    location_name = Column(String(150), nullable=False)
+    address = Column(String(255), nullable=True)
+    phone_number = Column(String(50), nullable=True)
+    average_rating = Column(Float, default=0.0)
+    total_reviews_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    integration = relationship("GoogleIntegration", back_populates="locations")
+    reviews = relationship("GoogleReview", back_populates="location", cascade="all, delete-orphan")
+
+
+class GoogleReview(Base):
+    __tablename__ = "google_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(Integer, ForeignKey("google_locations.id", ondelete="CASCADE"), nullable=False, index=True)
+    google_review_id = Column(String(150), nullable=False, index=True)  # unique per location
+    author_name = Column(String(120), default="Google Reviewer")
+    author_photo_url = Column(String(255), nullable=True)
+    star_rating = Column(Integer, nullable=False, index=True)  # 1 to 5
+    previous_star_rating = Column(Integer, nullable=True)  # Tracks rating change on updates
+    review_text = Column(Text, nullable=True)
+    original_review_url = Column(String(255), nullable=True)
+    review_created_at = Column(DateTime(timezone=True), nullable=False)
+    review_updated_at = Column(DateTime(timezone=True), nullable=True)
+    is_updated = Column(Boolean, default=False)
+    
+    # Low-Rating Alert Rule: strictly star_rating < 3
+    is_low_rating_alert = Column(Boolean, default=False, index=True)
+    alert_priority = Column(String(20), default="none")  # "critical" (1-star), "high" (2-star), "none" (>=3)
+    investigation_status = Column(String(30), default="uninvestigated", index=True)  # "uninvestigated", "investigating", "action_taken", "resolved", "dismissed"
+    
+    assigned_department_id = Column(String(50), ForeignKey("departments.id"), nullable=True)
+    assigned_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Strictly confidential internal notes - NEVER exposed publicly or in draft replies
+    internal_notes = Column(Text, nullable=True)
+    
+    # Public reply management
+    public_reply_status = Column(String(30), default="not_replied")  # "not_replied", "draft_ready", "approved", "posted"
+    public_reply_draft = Column(Text, nullable=True)
+    public_reply_approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    public_reply_approved_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Separation of concerns: external Google reviews are separate from internal QR tickets,
+    # but authorized admins can explicitly link a related ticket when appropriate.
+    linked_ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    location = relationship("GoogleLocation", back_populates="reviews")
+    ai_analysis = relationship("ReviewAIAnalysis", back_populates="review", uselist=False, cascade="all, delete-orphan")
+    alert = relationship("ReviewAlert", back_populates="review", uselist=False, cascade="all, delete-orphan")
+    corrective_actions = relationship("ReviewCorrectiveAction", back_populates="review", cascade="all, delete-orphan")
+    chat_messages = relationship("ReviewChatMessage", back_populates="review", cascade="all, delete-orphan")
+    linked_ticket = relationship("Ticket", foreign_keys=[linked_ticket_id])
+
+
+class ReviewAlert(Base):
+    __tablename__ = "review_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    review_id = Column(Integer, ForeignKey("google_reviews.id", ondelete="CASCADE"), unique=True, nullable=False)
+    star_rating = Column(Integer, nullable=False)
+    priority = Column(String(20), nullable=False)  # "critical", "high"
+    alert_status = Column(String(30), default="new")  # "new", "acknowledged", "investigating", "resolved"
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    acknowledged_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    notification_status = Column(String(30), default="delivered")  # "delivered", "pending", "failed"
+    notification_sent_at = Column(DateTime(timezone=True), default=utc_now)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    review = relationship("GoogleReview", back_populates="alert")
+
+
+class ReviewAIAnalysis(Base):
+    __tablename__ = "review_ai_analyses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    review_id = Column(Integer, ForeignKey("google_reviews.id", ondelete="CASCADE"), unique=True, nullable=False)
+    review_summary = Column(Text, nullable=False)
+    detected_topics = Column(Text, default="[]")  # JSON list
+    sentiment = Column(String(30), default="neutral")  # "positive", "neutral", "negative", "strongly_negative"
+    severity = Column(String(20), default="low")  # "low", "medium", "high", "critical"
+    suggested_department = Column(String(50), nullable=True)
+    possible_root_causes = Column(Text, default="[]")  # JSON list
+    recommended_actions = Column(Text, default="[]")  # JSON list
+    evidence_needed = Column(Text, default="[]")  # JSON list
+    suggested_public_reply = Column(Text, nullable=True)
+    confidence = Column(Float, default=0.85)
+    human_review_required = Column(Boolean, default=False)
+    model_version = Column(String(50), default="careops-reputation-ai-v1.0")
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    review = relationship("GoogleReview", back_populates="ai_analysis")
+
+
+class ReviewCorrectiveAction(Base):
+    __tablename__ = "review_corrective_actions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_number = Column(String(50), unique=True, index=True, nullable=False)  # e.g., "CAP-2026-001"
+    review_id = Column(Integer, ForeignKey("google_reviews.id", ondelete="CASCADE"), nullable=False, index=True)
+    issue_summary = Column(String(255), nullable=False)
+    department_id = Column(String(50), ForeignKey("departments.id"), nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    priority = Column(String(20), default="high")  # "low", "medium", "high", "critical"
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(30), default="new", index=True)  # "new", "assigned", "investigating", "action_required", "pending_verification", "completed", "reopened"
+    investigation_notes = Column(Text, nullable=True)
+    root_cause = Column(Text, nullable=True)
+    corrective_action = Column(Text, nullable=True)
+    preventive_action = Column(Text, nullable=True)
+    completion_evidence = Column(Text, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    review = relationship("GoogleReview", back_populates="corrective_actions")
+    department = relationship("Department")
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+
+
+class ReviewChatMessage(Base):
+    __tablename__ = "review_chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    review_id = Column(Integer, ForeignKey("google_reviews.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(String(20), nullable=False)  # "user", "assistant", "system"
+    content = Column(Text, nullable=False)
+    context_metadata = Column(Text, default="{}")  # JSON string
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    review = relationship("GoogleReview", back_populates="chat_messages")
+    user = relationship("User")

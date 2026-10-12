@@ -14,7 +14,7 @@ from app.services.sla_engine import SLAEngine
 # Routers
 from app.routers import (
     auth, patient, tickets, evidence, ai_verify,
-    departments, rooms, sla, analytics, audit, staff, system
+    departments, rooms, sla, analytics, audit, staff, system, google_reviews
 )
 from app.migrations import run_migrations
 
@@ -90,6 +90,8 @@ app.include_router(analytics.router, prefix=settings.API_V1_STR)
 app.include_router(audit.router, prefix=settings.API_V1_STR)
 app.include_router(staff.router, prefix=settings.API_V1_STR)
 app.include_router(system.router, prefix=settings.API_V1_STR)
+app.include_router(google_reviews.router, prefix=settings.API_V1_STR)
+app.include_router(google_reviews.integrations_router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health")
 def health_check():

@@ -39,6 +39,17 @@ class Settings(BaseSettings):
         "*"
     ]
 
+    # Google Business Profile & Reviews Module
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:3000/settings/integrations/google/callback")
+    GOOGLE_PUBSUB_TOPIC: str = os.getenv("GOOGLE_PUBSUB_TOPIC", "")
+    GOOGLE_PUBSUB_VERIFICATION_TOKEN: str = os.getenv("GOOGLE_PUBSUB_VERIFICATION_TOKEN", "careops_pubsub_verify_2026")
+    REVIEW_RETENTION_DAYS: int = 90  # Official Google API data retention compliance limit
+    REVIEW_ALERT_STAR_THRESHOLD: int = 3  # Strictly below 3 stars (< 3): 1 star (critical), 2 star (high)
+    REVIEW_SYNC_INTERVAL_MINUTES: int = 15
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
     class Config:
         env_file = ".env"
         extra = "allow"
