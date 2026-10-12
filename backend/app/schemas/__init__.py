@@ -42,6 +42,15 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: Optional[str] = "admin"
+    department_id: Optional[str] = "maintenance"
+    designation: Optional[str] = "Hospital Lead"
+    phone: Optional[str] = None
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

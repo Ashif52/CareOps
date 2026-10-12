@@ -13,7 +13,8 @@ import {
   Sparkles,
   ShieldAlert,
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  UserPlus
 } from "lucide-react";
 import { api, setStoredToken, User as UserType } from "@/lib/api";
 
@@ -25,12 +26,22 @@ interface PortalLoginGatewayProps {
 export function PortalLoginGateway({
   onLoginSuccess,
 }: PortalLoginGatewayProps) {
+  const [authMode, setAuthMode] = useState<"signin" | "register">("signin");
   const [email, setEmail] = useState("admin@careops.hospital");
   const [password, setPassword] = useState("password123");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activePersona, setActivePersona] = useState<string>("admin");
+
+  // Registration state
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regRole, setRegRole] = useState("admin");
+  const [regDepartment, setRegDepartment] = useState("maintenance");
+  const [regDesignation, setRegDesignation] = useState("Hospital Operations Lead");
+  const [showRegPassword, setShowRegPassword] = useState(false);
 
   const demoPersonas = [
     {
@@ -118,6 +129,46 @@ export function PortalLoginGateway({
     }
   };
 
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
+      setErrorMsg("Please provide your Name, Email address, and Password.");
+      return;
+    }
+
+    if (!regEmail.includes("@")) {
+      setErrorMsg("Please enter a valid work or hospital email address.");
+      return;
+    }
+
+    if (regPassword.length < 4) {
+      setErrorMsg("Password must be at least 4 characters long.");
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await api.register({
+        name: regName.trim(),
+        email: regEmail.trim().toLowerCase(),
+        password: regPassword,
+        role: regRole,
+        department_id: regDepartment,
+        designation: regDesignation.trim() || "Operations Personnel",
+      });
+
+      setStoredToken(res.access_token);
+      const landingTab = res.user.role === "staff" ? "my-department" : "overview";
+      onLoginSuccess(res.user, landingTab);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to create account. Email may already be registered.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col justify-between p-6 sm:p-10 lg:p-12 relative selection:bg-[#176B63] selection:text-white">
       {/* Decorative top header bar */}
@@ -193,13 +244,50 @@ export function PortalLoginGateway({
 
         {/* Right Column: Clean, Generously Sized Login Form */}
         <div className="lg:col-span-6">
-          <div className="bg-white rounded-3xl border border-[#CBD5E1] p-8 sm:p-10 shadow-2xl shadow-[#0F172A]/8 space-y-7">
-            <div className="space-y-1.5">
+          <div className="bg-white rounded-3xl border border-[#CBD5E1] p-8 sm:p-10 shadow-2xl shadow-[#0F172A]/8 space-y-6">
+            {/* Mode Switcher Tabs */}
+            <div className="flex items-center p-1 bg-[#F1F5F9] rounded-2xl border border-[#CBD5E1]">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("signin");
+                  setErrorMsg(null);
+                }}
+                className={`flex-1 py-2.5 rounded-xl font-extrabold text-sm transition-all cursor-pointer ${
+                  authMode === "signin"
+                    ? "bg-white text-[#0F172A] shadow-sm border border-[#CBD5E1]"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                }`}
+              >
+                Staff Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("register");
+                  setErrorMsg(null);
+                  if (email && email !== "admin@careops.hospital") setRegEmail(email);
+                  if (password && password !== "password123") setRegPassword(password);
+                }}
+                className={`flex-1 py-2.5 rounded-xl font-extrabold text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMode === "register"
+                    ? "bg-white text-[#176B63] shadow-sm border border-[#CBD5E1]"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                }`}
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Create Account</span>
+              </button>
+            </div>
+
+            <div className="space-y-1">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] tracking-tight">
-                Staff & Administrator Sign In
+                {authMode === "signin" ? "Staff & Administrator Sign In" : "Create Hospital Account"}
               </h2>
               <p className="text-sm text-[#64748B]">
-                Enter your hospital email and password to access your assigned queue.
+                {authMode === "signin"
+                  ? "Enter your hospital email and password to access your assigned queue."
+                  : "Register your personnel credentials to access your CareOps workspace immediately."}
               </p>
             </div>
 
@@ -216,79 +304,188 @@ export function PortalLoginGateway({
                 ) : (
                   <AlertCircle className="h-5 w-5 shrink-0 text-[#B91C1C] mt-0.5" />
                 )}
-                <div>
+                <div className="flex-1">
                   <div className="font-black text-sm">
                     {errorMsg.toLowerCase().includes("locked")
                       ? "Security Lockout Triggered (3 Consecutive Failures)"
-                      : "Authentication Failed"}
+                      : "Authentication Notice"}
                   </div>
                   <div className="mt-0.5 text-xs font-semibold leading-relaxed">{errorMsg}</div>
+                  {authMode === "signin" && errorMsg.includes("Invalid email or password") && (
+                    <div className="mt-2 pt-2 border-t border-[#FCA5A5]/60 text-xs">
+                      Don't have an account registered yet?{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode("register");
+                          setRegEmail(email);
+                          setRegPassword(password);
+                          setErrorMsg(null);
+                        }}
+                        className="underline font-black text-[#991B1B] hover:text-[#7F1D1D] cursor-pointer"
+                      >
+                        Click here to create account with this email →
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            <form onSubmit={handleLoginSubmit} className="space-y-5">
-              {/* Email Input */}
-              <div className="space-y-2">
-                <label className="font-bold text-sm text-[#1E293B] block">Hospital Email Address</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8]" />
+            {authMode === "signin" ? (
+              /* Sign In Form */
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
+                {/* Email Input */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-sm text-[#1E293B] block">Hospital Email Address</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8]" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. admin@careops.hospital"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        setErrorMsg(null);
+                      }}
+                      className="w-full pl-12 pr-4 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    />
+                  </div>
+                </div>
+
+                {/* Password Input */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-sm text-[#1E293B]">Password</label>
+                    <span className="text-xs text-[#64748B]">Default Seed: <code className="text-[#176B63] font-mono font-bold">password123</code></span>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8]" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setErrorMsg(null);
+                      }}
+                      className="w-full pl-12 pr-12 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3.5 rounded-2xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-extrabold text-base shadow-lg shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <span>{isLoading ? "Verifying Credentials..." : "Sign In to Workspace"}</span>
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              </form>
+            ) : (
+              /* Register Form */
+              <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-sm text-[#1E293B] block">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Ashif Basha"
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-sm text-[#1E293B] block">Hospital Email Address</label>
                   <input
                     type="email"
                     required
-                    placeholder="e.g. admin@careops.hospital"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      setErrorMsg(null);
-                    }}
-                    className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    placeholder="e.g. bashajafer36@gmail.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
                   />
                 </div>
-              </div>
 
-              {/* Password Input */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-sm text-[#1E293B]">Password</label>
-                  <span className="text-xs text-[#64748B]">Default Seed: <code className="text-[#176B63] font-mono font-bold">password123</code></span>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-sm text-[#1E293B] block">Create Password</label>
+                  <div className="relative">
+                    <input
+                      type={showRegPassword ? "text" : "password"}
+                      required
+                      placeholder="••••••••"
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      className="w-full px-4 pr-12 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPassword(!showRegPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {showRegPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8]" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      setErrorMsg(null);
-                    }}
-                    className="w-full pl-12 pr-12 py-3.5 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1.5 rounded-lg transition-colors cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-              </div>
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-4 rounded-2xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-extrabold text-base shadow-lg shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
-              >
-                <span>{isLoading ? "Verifying Credentials..." : "Sign In to Workspace"}</span>
-                <ArrowRight className="h-5 w-5" />
-              </button>
-            </form>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-xs text-[#334155] block mb-1">Access Role</label>
+                    <select
+                      value={regRole}
+                      onChange={(e) => setRegRole(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
+                    >
+                      <option value="admin">Administrator (Full Access)</option>
+                      <option value="supervisor">Operations Supervisor</option>
+                      <option value="staff">Maintenance / Staff Lead</option>
+                      <option value="doctor">Duty Doctor / Physician</option>
+                      <option value="nurse">Clinical Nursing Staff</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-xs text-[#334155] block mb-1">Department</label>
+                    <select
+                      value={regDepartment}
+                      onChange={(e) => setRegDepartment(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
+                    >
+                      <option value="maintenance">Facilities & Maintenance</option>
+                      <option value="nursing">Nursing & Clinical Inpatient</option>
+                      <option value="housekeeping">Housekeeping & Sanitation</option>
+                      <option value="billing">Patient Billing & Accounts</option>
+                      <option value="pharmacy">Clinical Pharmacy</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3.5 rounded-2xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-extrabold text-base shadow-lg shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <UserPlus className="h-5 w-5" />
+                  <span>{isLoading ? "Creating Account..." : "Create Account & Sign In"}</span>
+                </button>
+              </form>
+            )}
 
             {/* Quick Demo Pre-Fill Selector */}
-            <div className="pt-6 border-t border-[#E2E8F0] space-y-3.5">
+            <div className="pt-5 border-t border-[#E2E8F0] space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold text-[#475569] uppercase tracking-wider">
                   Test Credentials (Click to Pre-fill):
@@ -298,12 +495,15 @@ export function PortalLoginGateway({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {demoPersonas.map((p) => {
-                  const isSelected = email.toLowerCase() === p.email.toLowerCase();
+                  const isSelected = email.toLowerCase() === p.email.toLowerCase() && authMode === "signin";
                   return (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => handleSelectPersona(p)}
+                      onClick={() => {
+                        setAuthMode("signin");
+                        handleSelectPersona(p);
+                      }}
                       className={`text-left p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between gap-1.5 cursor-pointer ${
                         isSelected
                           ? "border-[#176B63] bg-[#E8F3F1] ring-2 ring-[#176B63]/30"
@@ -326,10 +526,10 @@ export function PortalLoginGateway({
                 })}
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#475569] flex items-center gap-2.5">
-                <ShieldAlert className="h-5 w-5 text-[#0D9488] shrink-0" />
+              <div className="p-3 rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#475569] flex items-center gap-2.5">
+                <ShieldAlert className="h-4 w-4 text-[#0D9488] shrink-0" />
                 <span>
-                  <strong>Admin Clearance Notice:</strong> Only <code>Dr. Alistair Vance (Admin)</code> has authority to register rooms and generate bedside QR codes.
+                  <strong>Admin Clearance Notice:</strong> Only <code>Dr. Alistair Vance (Admin)</code> or accounts created with <code>Administrator</code> role can register rooms and generate bedside QR codes.
                 </span>
               </div>
             </div>

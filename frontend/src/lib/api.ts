@@ -538,6 +538,15 @@ export const api = {
   // Auth
   login: (creds: { email: string; password: string }) =>
     fetchWithAuth("/auth/login", { method: "POST", body: JSON.stringify(creds) }),
+  register: (data: {
+    name: string;
+    email: string;
+    password: string;
+    role?: string;
+    department_id?: string;
+    designation?: string;
+    phone?: string;
+  }) => fetchWithAuth("/auth/register", { method: "POST", body: JSON.stringify(data) }),
   getMe: () => fetchWithAuth("/auth/me"),
   getDemoUsers: () => fetchWithAuth("/auth/demo-users"),
 
