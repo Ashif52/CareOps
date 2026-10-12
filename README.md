@@ -175,27 +175,51 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 5. Demo Accounts
+## 4. Production Cloud Deployments
+
+CareOps AI is deployed and live in production:
+- **Web Application (Vercel)**: [https://care-ops-dusky.vercel.app](https://care-ops-dusky.vercel.app)
+- **FastAPI Core Engine (Render)**: [https://careops-5uaf.onrender.com](https://careops-5uaf.onrender.com)
+- **API Health Check**: [https://careops-5uaf.onrender.com/api/health](https://careops-5uaf.onrender.com/api/health)
+- **Interactive Swagger Docs**: [https://careops-5uaf.onrender.com/docs](https://careops-5uaf.onrender.com/docs)
+- **PostgreSQL Database**: Serverless Neon Postgres with automated connection pooling.
+
+---
+
+## 5. Demo & Governance Accounts
 
 The top header includes a **One-Click Role Switcher** to test all permission tiers immediately:
 
 | Name | Role | Email | Password | Primary Capabilities |
 |---|---|---|---|---|
-| **Dr. Alistair Vance** | Administrator | `admin@careops.hospital` | `password123` | Full dashboard, SLA policies, analytics, room QR management |
-| **Vikramaditya Rao** | Supervisor | `supervisor.mnt@careops.hospital` | `password123` | AI verification sign-off, override justifications, closure approval |
+| **System Superadmin** | Superadmin | `superadmin@careops.hospital` | `password123` | Exclusive database wipe, operational purge, demo reseed, system recovery |
+| **Dr. Alistair Vance** | Administrator | `admin@careops.hospital` | `password123` | Full dashboard, SLA policies, analytics, room QR management, audit trails |
+| **Vikramaditya Rao** | Supervisor | `supervisor.mnt@careops.hospital` | `password123` | AI verification sign-off, override justifications, closure approval, reports |
 | **Rajesh Sharma** | Staff (Lead) | `technician.rajesh@careops.hospital` | `password123` | Acknowledge tickets, start work, capture evidence, submit resolution |
 | **Nurse Priya Nair** | Staff (Nurse) | `nurse.priya@careops.hospital` | `password123` | Clinical requests, IV pump triage, patient care updates |
 
 ---
 
-## 6. Running Automated Tests
+## 6. Executive Analytics & Reports
+
+The platform includes an enterprise analytics engine:
+- **Throughput Velocity**: Weekly volume vs. closure velocity and backlog trend tracking.
+- **Departmental SLA Matrix**: Real-time response and resolution compliance rates across all 6 departments.
+- **AI Verification Intelligence**: Automated vision pass rate, inconclusive flags, and supervisor override distribution.
+- **Overdue Heatmap**: Visual identification of persistent operational bottlenecks.
+- **Audit & CSV Export**: One-click download of filtered ticket records and raw forensic audit logs.
+
+---
+
+## 7. Running Automated Tests
 
 ### Unit & Security Boundary Tests
 ```bash
 cd backend
 python -m pytest tests/test_backend.py -v
 ```
-*Validates health checks, seeded departments, JWT authentication, patient privacy boundaries, staff workflows, ceiling fan motion heuristics, and the SLA engine.*
+*Validates health checks, seeded departments, JWT authentication, patient privacy boundaries, staff workflows, ceiling fan motion heuristics, SLA engine, and superadmin database security.*
+
 
 ### End-to-End Operational Verification Script
 ```bash

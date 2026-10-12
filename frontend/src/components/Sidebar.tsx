@@ -87,6 +87,12 @@ export function Sidebar({
       roles: ["admin"],
     },
     {
+      id: "analytics",
+      label: "Analytics & Reports",
+      icon: BarChart3,
+      roles: ["admin", "supervisor"],
+    },
+    {
       id: "audit",
       label: "Audit Logs",
       icon: ScrollText,

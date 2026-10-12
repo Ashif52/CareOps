@@ -16,6 +16,7 @@ import { CreateTicketModal } from "@/components/CreateTicketModal";
 import { PortalLoginGateway } from "@/components/PortalLoginGateway";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
 import { StaffAccessManagementView } from "@/components/StaffAccessManagementView";
+import { AnalyticsReportsView } from "@/components/AnalyticsReportsView";
 import { QrCode, Bell, Sparkles, Lock, Trash2, CheckCircle2 } from "lucide-react";
 
 import {
@@ -303,7 +304,7 @@ export default function CareOpsApp() {
     if (!currentUser) return;
     const role = currentUser.role || "admin";
     const staffAllowed = ["my-department", "tickets"];
-    const supervisorAllowed = ["my-department", "tickets", "ai-verify", "sla", "departments"];
+    const supervisorAllowed = ["my-department", "tickets", "ai-verify", "sla", "departments", "analytics"];
 
     if (role === "staff" && !staffAllowed.includes(currentTab)) {
       setCurrentTab("my-department");
@@ -669,6 +670,15 @@ export default function CareOpsApp() {
                 setPatientRoomToken(token);
                 setShowPatientPortal(true);
               }}
+            />
+          )}
+
+          {currentTab === "analytics" && (
+            <AnalyticsReportsView
+              metrics={metrics}
+              tickets={tickets}
+              departments={departments}
+              onSelectTicket={(id) => setSelectedTicketId(id)}
             />
           )}
 

@@ -160,3 +160,49 @@ def test_sla_escalation_engine():
     stats = SLAEngine.run_sla_check_cycle()
     assert "scanned" in stats
     assert stats["scanned"] >= 1
+
+
+def test_superadmin_clear_database_security_and_execution():
+    """Validates that only superadmin can trigger clear-database and that reset restores demo tickets safely"""
+    # 1. Standard Admin cannot clear database (Must return 403 Forbidden)
+    admin_login = client.post("/api/auth/login", json={
+        "email": "admin@careops.hospital",
+        "password": "password123"
+    })
+    assert admin_login.status_code == 200
+    admin_token = admin_login.json()["access_token"]
+
+    forbidden_resp = client.post("/api/system/clear-database", json={
+        "mode": "reset_all",
+        "confirm_phrase": "CONFIRM_CLEAR"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert forbidden_resp.status_code == 403
+
+    # 2. Superadmin login
+    superadmin_login = client.post("/api/auth/login", json={
+        "email": "superadmin@careops.hospital",
+        "password": "password123"
+    })
+    assert superadmin_login.status_code == 200
+    superadmin_token = superadmin_login.json()["access_token"]
+    sa_headers = {"Authorization": f"Bearer {superadmin_token}"}
+
+    # 3. Bad confirmation phrase
+    bad_phrase_resp = client.post("/api/system/clear-database", json={
+        "mode": "reset_all",
+        "confirm_phrase": "WRONG_PHRASE"
+    }, headers=sa_headers)
+    assert bad_phrase_resp.status_code == 400
+
+    # 4. Successful reset_all by superadmin
+    reset_resp = client.post("/api/system/clear-database", json={
+        "mode": "reset_all",
+        "confirm_phrase": "CONFIRM_CLEAR"
+    }, headers=sa_headers)
+    assert reset_resp.status_code == 200
+    assert reset_resp.json()["success"] is True
+
+    # 5. Verify demo tickets reseeded
+    tickets_resp = client.get("/api/tickets", headers=sa_headers)
+    assert tickets_resp.status_code == 200
+    assert len(tickets_resp.json()) >= 5

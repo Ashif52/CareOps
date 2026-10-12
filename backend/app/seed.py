@@ -17,7 +17,22 @@ def seed_database():
     try:
         # Check if already seeded
         if db.query(Department).first():
-            print("Database already contains data, skipping seed.")
+            # Ensure superadmin exists even on previously seeded databases
+            if not db.query(User).filter(User.email == "superadmin@careops.hospital").first():
+                pw_hash = get_password_hash("password123")
+                superadmin = User(
+                    email="superadmin@careops.hospital",
+                    name="System Superadmin",
+                    role="superadmin",
+                    department_id=None,
+                    phone="+91 98765 00000",
+                    avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+                    hashed_password=pw_hash
+                )
+                db.add(superadmin)
+                db.commit()
+                print("Added missing superadmin account.")
+            print("Database already contains data, skipping full seed.")
             return
 
         print("Seeding CareOps AI enterprise database...")
