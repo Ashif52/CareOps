@@ -10,7 +10,10 @@ import {
   ShieldAlert,
   Flame,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  Mail,
+  Phone,
+  ShieldCheck
 } from "lucide-react";
 import { SLAPolicy, EscalationLog } from "@/lib/api";
 
@@ -55,6 +58,69 @@ export function SLAPoliciesView({
           <RefreshCw className={`h-4 w-4 ${isRunningCheck ? "animate-spin" : ""}`} />
           <span>{isRunningCheck ? "Scanning Tickets..." : "Run SLA Scan Cycle Now"}</span>
         </button>
+      </div>
+
+      {/* SMTPS Maintenance Escalation Routing Card */}
+      <div className="bg-white rounded-3xl border-2 border-[#CBD5E1] shadow-sm p-6 sm:p-7 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-[#DC2626]/10 text-[#DC2626]">
+              <ShieldAlert className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="font-black text-lg text-[#0F172A] flex items-center gap-2">
+                <span>Maintenance Department SMTPS & Mobile Escalation Routing</span>
+                <span className="px-2 py-0.5 rounded-md bg-[#EDF7F2] text-[#16805D] text-[11px] font-black uppercase border border-[#A6E1CE]">
+                  Active
+                </span>
+              </h3>
+              <p className="text-xs text-[#64748B]">
+                Automated multi-channel emergency alert routing for SLA target breaches and patient priority escalations
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-[#F1F5F9] text-xs">
+          <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1">
+            <div className="flex items-center gap-2 text-[#64748B] font-bold">
+              <Mail className="h-4 w-4 text-[#176B63]" />
+              <span>Department Work Email</span>
+            </div>
+            <strong className="block text-sm text-[#0F172A] font-mono">
+              maintenance@careops.hospital
+            </strong>
+            <span className="text-[11px] text-[#64748B]">
+              Routes to configured WORK_EMAIL and on-duty maintenance supervisor
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1">
+            <div className="flex items-center gap-2 text-[#64748B] font-bold">
+              <Phone className="h-4 w-4 text-[#DC2626]" />
+              <span>Supervisor Mobile Number</span>
+            </div>
+            <strong className="block text-sm text-[#DC2626] font-mono">
+              +91 98765 00003
+            </strong>
+            <span className="text-[11px] text-[#64748B]">
+              Direct SMS gateway and phone escalation dispatch
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1">
+            <div className="flex items-center gap-2 text-[#64748B] font-bold">
+              <ShieldCheck className="h-4 w-4 text-[#2563EB]" />
+              <span>Protocol & Security</span>
+            </div>
+            <strong className="block text-sm text-[#0F172A]">
+              SMTPS (SSL/TLS Port 465)
+            </strong>
+            <span className="text-[11px] text-[#64748B]">
+              Encrypted dispatch with emergency priority headers
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* SLA Policy Table */}

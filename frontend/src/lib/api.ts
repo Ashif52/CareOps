@@ -551,6 +551,11 @@ export const api = {
     fetchWithAuth("/patient/submit", { method: "POST", body: JSON.stringify(data) }),
   getPatientTicketStatus: (ticketNumber: string) =>
     fetchWithAuth(`/patient/ticket/${ticketNumber}`),
+  escalatePatientTicket: (ticketNumber: string, reason?: string) =>
+    fetchWithAuth(`/patient/ticket/${encodeURIComponent(ticketNumber)}/escalate`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   getPatientStreamUrl: (ticketNumber: string) =>
     `${getApiBase()}/patient/ticket/${encodeURIComponent(ticketNumber)}/stream`,
   getStaffStreamUrl: (token: string) =>

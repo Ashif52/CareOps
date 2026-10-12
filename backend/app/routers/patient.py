@@ -3,6 +3,7 @@ import json
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -19,6 +20,10 @@ from app.services.ticket_service import TicketService
 from app.services.storage_service import StorageService
 from app.services.realtime_service import realtime_hub
 from app.services.auth_service import create_access_token
+from app.services.notification_service import NotificationService
+
+class PatientEscalateRequest(BaseModel):
+    reason: Optional[str] = None
 
 router = APIRouter(prefix="/patient", tags=["Patient QR Portal"])
 
@@ -316,6 +321,9 @@ def get_patient_ticket_status(ticket_number: str, db: Session = Depends(get_db))
         "acknowledged_at": ticket.acknowledged_at.isoformat() if ticket.acknowledged_at else None,
         "in_progress_at": ticket.in_progress_at.isoformat() if ticket.in_progress_at else None,
         "closed_at": ticket.closed_at.isoformat() if ticket.closed_at else None,
+        "is_escalated": ticket.is_escalated,
+        "escalation_level": ticket.escalation_level,
+        "escalation_reason": ticket.escalation_reason,
         "updates": [
             {
                 "timestamp": note.created_at.isoformat(),
@@ -372,3 +380,69 @@ async def stream_patient_ticket_status(ticket_number: str, db: Session = Depends
             "X-Accel-Buffering": "no"
         }
     )
+
+@router.post("/ticket/{ticket_number}/escalate")
+async def escalate_patient_ticket(
+    ticket_number: str,
+    payload: Optional[PatientEscalateRequest] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Emergency escalation endpoint triggered by patient from room tracking portal.
+    Dispatches immediate alert to Maintenance Department email and mobile via SMTPS.
+    """
+    clean_num = ticket_number.strip().upper()
+    ticket = db.query(Ticket).filter(Ticket.ticket_number == clean_num).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Service ticket not found.")
+    if ticket.status == "closed":
+        raise HTTPException(status_code=400, detail="Cannot escalate a resolved and closed ticket.")
+
+    escalation_reason = (
+        payload.reason
+        if payload and payload.reason
+        else "Urgent patient escalation requested from mobile room tracking portal."
+    )
+    ticket.is_escalated = True
+    ticket.escalation_level = max(ticket.escalation_level + 1, 1)
+    ticket.escalation_reason = escalation_reason
+
+    # Add patient-visible and internal progress note
+    note = TicketNote(
+        ticket_id=ticket.id,
+        author_name="Patient Escalation Dispatch",
+        content=f"Priority Escalation: Routed to Maintenance Department & Supervisor via SMTPS. Reason: {escalation_reason}",
+        is_internal=False
+    )
+    db.add(note)
+
+    # Dispatch via SMTPS and Mobile Notification Service
+    dispatch_result = NotificationService.send_escalation_alert(
+        db=db,
+        ticket=ticket,
+        escalation_level=ticket.escalation_level,
+        reason=escalation_reason,
+        trigger_source="PATIENT_PORTAL_ESCALATION"
+    )
+
+    db.commit()
+    db.refresh(ticket)
+
+    # Publish real-time SSE update so both staff and patient screen update
+    try:
+        await realtime_hub.publish_ticket_updated(ticket.ticket_number, {
+            "is_escalated": ticket.is_escalated,
+            "escalation_level": ticket.escalation_level,
+            "escalation_reason": ticket.escalation_reason,
+            "status": ticket.status
+        })
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Ticket successfully escalated to Maintenance Department.",
+        "ticket_number": ticket.ticket_number,
+        "escalation_level": ticket.escalation_level,
+        "dispatch": dispatch_result
+    }

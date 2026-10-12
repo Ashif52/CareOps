@@ -5,7 +5,8 @@ import {
   ShieldCheck,
   ArrowLeft,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from "lucide-react";
 import { api, formatTime, formatDateTime } from "@/lib/api";
 
@@ -20,6 +21,7 @@ export default function TrackClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [isEscalating, setIsEscalating] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -31,6 +33,22 @@ export default function TrackClient({
       setError(err.message || "Failed to load service ticket.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEscalate = async () => {
+    if (!confirm("Dispatch an urgent escalation alert directly to the Maintenance Department email and on-duty supervisor mobile number via secure SMTPS?")) {
+      return;
+    }
+    setIsEscalating(true);
+    try {
+      await api.escalatePatientTicket(ticketNumber, "Patient requested urgent escalation from room tracking portal.");
+      alert("Alert dispatched! The Maintenance Department email and supervisor mobile number have been notified via SMTPS.");
+      await fetchStatus();
+    } catch (err: any) {
+      alert(`Escalation failed: ${err.message || err}`);
+    } finally {
+      setIsEscalating(false);
     }
   };
 
@@ -166,6 +184,39 @@ export default function TrackClient({
                   </span>
                 </div>
               </div>
+
+              {/* SMTPS Maintenance Escalation Banner or Dispatch Action */}
+              {ticket.is_escalated ? (
+                <div className="p-4 rounded-2xl bg-[#FEF2F2] border-2 border-[#FCA5A5] text-[#991B1B] text-xs space-y-1.5 shadow-xs">
+                  <div className="flex items-center gap-2 font-black text-sm">
+                    <AlertTriangle className="h-4 w-4 text-[#DC2626] shrink-0" />
+                    <span>Escalated to Maintenance Department (Level {ticket.escalation_level || 1})</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-[#7F1D1D]">
+                    Dispatched via SMTPS to Maintenance Department work email and on-duty supervisor mobile number.
+                    {ticket.escalation_reason && (
+                      <span className="block mt-1 font-semibold text-[#991B1B]">Reason: {ticket.escalation_reason}</span>
+                    )}
+                  </p>
+                </div>
+              ) : ticket.status !== "closed" ? (
+                <div className="p-3.5 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-bold text-[#92400E] block">Need Urgent Attention?</span>
+                    <span className="text-[11px] text-[#A16207]">
+                      Dispatches direct SMTPS alert to Maintenance mail & mobile.
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleEscalate}
+                    disabled={isEscalating}
+                    className="px-3.5 py-2 bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span>{isEscalating ? "Dispatching SMTPS..." : "Request Urgent Escalation"}</span>
+                  </button>
+                </div>
+              ) : null}
 
               {/* 5-Step Visual Progress Tracker */}
               <div className="space-y-3">

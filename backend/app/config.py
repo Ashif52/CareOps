@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     REVIEW_SYNC_INTERVAL_MINUTES: int = 15
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
+    # SMTPS & Maintenance Department Escalation Dispatch
+    WORK_EMAIL: str = os.getenv("WORK_EMAIL", "")  # Work email configured for operational escalations
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))  # 465 for SMTPS SSL, 587 for STARTTLS
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "alerts@careops.hospital")
+    SMTP_USE_SSL: bool = os.getenv("SMTP_USE_SSL", "true").lower() in ("true", "1", "yes")
+    MAINTENANCE_DEPARTMENT_EMAIL: str = os.getenv("MAINTENANCE_DEPARTMENT_EMAIL", "maintenance@careops.hospital")
+    MAINTENANCE_DEPARTMENT_MOBILE: str = os.getenv("MAINTENANCE_DEPARTMENT_MOBILE", "+91 98765 00003")
+
     class Config:
         env_file = ".env"
         extra = "allow"

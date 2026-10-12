@@ -76,23 +76,14 @@ class SLAEngine:
                         ticket.escalation_level = 1
                         ticket.escalation_reason = "Acknowledgement SLA target breached."
                         
-                        esc = EscalationLog(
-                            ticket_id=ticket.id,
+                        from app.services.notification_service import NotificationService
+                        NotificationService.send_escalation_alert(
+                            db=db,
+                            ticket=ticket,
                             escalation_level=1,
-                            trigger_reason="Acknowledgement deadline exceeded without staff acknowledgement.",
-                            notified_supervisor_id=ticket.assigned_supervisor_id,
-                            delivery_status="delivered"
+                            reason=ticket.escalation_reason,
+                            trigger_source="SLA_ACK_BREACH"
                         )
-                        db.add(esc)
-                        
-                        audit = AuditLog(
-                            ticket_id=ticket.id,
-                            action="SLA_ACK_BREACH",
-                            actor_name="SLA Monitor Engine",
-                            actor_role="system",
-                            details=json.dumps({"breach_time": now.isoformat(), "level": 1})
-                        )
-                        db.add(audit)
                         stats["escalated_ack_breach"] += 1
 
                 # 2. Check Resolution SLA Breach
@@ -106,23 +97,14 @@ class SLAEngine:
                         ticket.escalation_level = 2
                         ticket.escalation_reason = "Resolution SLA deadline breached. Immediate supervisor review required."
                         
-                        esc = EscalationLog(
-                            ticket_id=ticket.id,
+                        from app.services.notification_service import NotificationService
+                        NotificationService.send_escalation_alert(
+                            db=db,
+                            ticket=ticket,
                             escalation_level=2,
-                            trigger_reason="Resolution target time exceeded. Ticket escalated to Operations Supervisor.",
-                            notified_supervisor_id=ticket.assigned_supervisor_id,
-                            delivery_status="delivered"
+                            reason=ticket.escalation_reason,
+                            trigger_source="SLA_RESOLUTION_BREACH"
                         )
-                        db.add(esc)
-                        
-                        audit = AuditLog(
-                            ticket_id=ticket.id,
-                            action="SLA_RESOLUTION_BREACH",
-                            actor_name="SLA Monitor Engine",
-                            actor_role="system",
-                            details=json.dumps({"breach_time": now.isoformat(), "level": 2})
-                        )
-                        db.add(audit)
                         stats["escalated_resolution_breach"] += 1
                         
             db.commit()
