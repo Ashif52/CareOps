@@ -1,7 +1,8 @@
+import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-import logging
 
 from app.database import get_db
 from app.models import (
@@ -9,6 +10,7 @@ from app.models import (
     EscalationLog, AuditLog, Department, Room, SLAPolicy
 )
 from app.services.auth_service import require_roles, get_current_user
+from app.seed import seed_demo_tickets
 
 logger = logging.getLogger("careops.system")
 router = APIRouter(prefix="/system", tags=["System & Superadmin"])
@@ -36,25 +38,30 @@ def clear_database(
 
     try:
         if payload.mode == "purge_operational":
-            # Count records before deletion
+            # 1. Count records before deletion
             tickets_count = db.query(Ticket).count()
 
-            # Delete children entities first to preserve relational integrity
+            # 2. Delete child entities in strict foreign-key order
+            # (AuditLog references Ticket via ticket_id, so AuditLog MUST be deleted before Ticket)
             db.query(AIVerificationJob).delete(synchronize_session=False)
             db.query(Evidence).delete(synchronize_session=False)
             db.query(TicketNote).delete(synchronize_session=False)
             db.query(EscalationLog).delete(synchronize_session=False)
-            db.query(Ticket).delete(synchronize_session=False)
             db.query(AuditLog).delete(synchronize_session=False)
+            db.query(Ticket).delete(synchronize_session=False)
 
-            # Record audit ledger entry documenting superadmin purge
+            # 3. Record audit ledger entry documenting superadmin purge
             audit = AuditLog(
-                actor_user_id=current_user.id,
+                ticket_id=None,
+                actor_id=current_user.id,
+                actor_name=current_user.name,
                 actor_role=current_user.role,
-                action="database_purged",
-                entity_type="system",
-                entity_id="database",
-                details=f"Superadmin {current_user.email} executed operational database purge ({tickets_count} tickets removed)."
+                action="DATABASE_PURGED",
+                details=json.dumps({
+                    "mode": "purge_operational",
+                    "tickets_cleared": tickets_count,
+                    "executed_by": current_user.email
+                })
             )
             db.add(audit)
             db.commit()
@@ -67,33 +74,39 @@ def clear_database(
             }
 
         elif payload.mode == "reset_all":
-            # Purge operational records
+            # Count records before deletion
             tickets_count = db.query(Ticket).count()
+
+            # Delete operational records in strict foreign-key order
             db.query(AIVerificationJob).delete(synchronize_session=False)
             db.query(Evidence).delete(synchronize_session=False)
             db.query(TicketNote).delete(synchronize_session=False)
             db.query(EscalationLog).delete(synchronize_session=False)
-            db.query(Ticket).delete(synchronize_session=False)
             db.query(AuditLog).delete(synchronize_session=False)
+            db.query(Ticket).delete(synchronize_session=False)
 
             # Re-seed clean demo records
-            from app.seed import seed_database
-            seed_database()
+            seed_demo_tickets(db)
 
             audit = AuditLog(
-                actor_user_id=current_user.id,
+                ticket_id=None,
+                actor_id=current_user.id,
+                actor_name=current_user.name,
                 actor_role=current_user.role,
-                action="database_reset",
-                entity_type="system",
-                entity_id="database",
-                details=f"Superadmin {current_user.email} reset database to baseline demo state."
+                action="DATABASE_RESET",
+                details=json.dumps({
+                    "mode": "reset_all",
+                    "previous_tickets_cleared": tickets_count,
+                    "reseeded_tickets": 5,
+                    "executed_by": current_user.email
+                })
             )
             db.add(audit)
             db.commit()
 
             return {
                 "success": True,
-                "message": "Database reset completed with clean seed state restored.",
+                "message": f"Database reset completed. Successfully purged {tickets_count} tickets and re-seeded fresh demonstration tickets across all departments.",
                 "tickets_cleared": tickets_count
             }
 

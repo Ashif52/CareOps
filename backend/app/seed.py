@@ -234,236 +234,8 @@ def seed_database():
         db.flush()
 
         # 6. Realistic Sample Tickets across states
-        # Ticket 1: The flagship Ceiling Fan repair with AI verification
-        t1 = Ticket(
-            ticket_number="TKT-MNT-1001",
-            title="Ceiling Fan Not Rotating - Room 204",
-            description="Patient in Bed 1 reports the ceiling fan fails to start when regulator switch is turned to max. Whirring noise heard from the motor capacitor.",
-            voice_recording_url="/uploads/audio/demo_fan_complaint.webm",
-            voice_transcription="Hello nurse station, the overhead ceiling fan in room 204 isn't spinning even though the wall switch is on. It's getting quite warm.",
-            department_id="maintenance",
-            room_id=rooms[0].id,
-            room_number=rooms[0].room_number,
-            category="Ceiling Fan",
-            priority="high",
-            status="resolution_submitted",
-            is_escalated=False,
-            assigned_staff_id=staff_members[0].id,  # Rajesh
-            assigned_supervisor_id=sup_mnt.id,
-            sla_acknowledgement_deadline=now - timedelta(minutes=90),
-            sla_resolution_deadline=now + timedelta(minutes=40),
-            acknowledged_at=now - timedelta(minutes=100),
-            in_progress_at=now - timedelta(minutes=80),
-            resolution_submitted_at=now - timedelta(minutes=15),
-            resolution_summary="Replaced faulty 3.15uF capacitor and re-lubricated motor ball bearing assembly. Fan inspected for balanced clearance.",
-            parts_replaced="3.15uF Havells Motor Capacitor",
-            functional_test_notes="Ran at Step 5 for 10 minutes without rattling or heat buildup. Blade clearance 34cm verified.",
-            patient_contact="+91 98451 00293",
-            created_at=now - timedelta(minutes=110)
-        )
-        db.add(t1)
-        db.flush()
+        seed_demo_tickets(db)
 
-        # Evidences for T1
-        ev_t1_before = Evidence(
-            ticket_id=t1.id,
-            stage="before",
-            media_type="video",
-            file_url="https://assets.mixkit.co/videos/preview/mixkit-ceiling-fan-in-a-white-room-42861-large.mp4",
-            file_size_bytes=4210000,
-            file_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            equipment_type="Ceiling Fan",
-            uploaded_by_id=staff_members[0].id,
-            notes="Before: Switch turned on, motor stationary. Video demonstrates complete absence of blade rotation."
-        )
-        ev_t1_after = Evidence(
-            ticket_id=t1.id,
-            stage="after",
-            media_type="video",
-            file_url="https://assets.mixkit.co/videos/preview/mixkit-ceiling-fan-rotating-in-a-room-42862-large.mp4",
-            file_size_bytes=5180000,
-            file_hash="ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
-            equipment_type="Ceiling Fan",
-            uploaded_by_id=staff_members[0].id,
-            notes="After: Capacitor replaced, fan running smoothly at high speed. Blade motion clearly visible."
-        )
-        db.add_all([ev_t1_before, ev_t1_after])
-        db.flush()
-
-        ai_t1 = AIVerificationJob(
-            ticket_id=t1.id,
-            status="completed",
-            before_evidence_id=ev_t1_before.id,
-            after_evidence_id=ev_t1_after.id,
-            evidence_relevance="high",
-            equipment_match="confirmed_match",
-            visible_fault_assessment="fault_cleared",
-            after_repair_functional_evidence="movement_observed",
-            media_quality="high",
-            missing_evidence="[]",
-            inconsistencies="[]",
-            ai_recommendation="likely_resolved",
-            review_requirement="standard_signoff",
-            confidence_score=0.92,
-            analysis_notes="Both before and after video streams clearly demonstrate identical Crompton ceiling fan fixture in Room 204. Pre-repair: stationary blades with energized switch circuit. Post-repair: continuous 320 RPM rotational motion detected with zero blade wobble. Operational criteria satisfied.",
-            model_version="careops-vision-v2.4",
-            analysis_timestamp=now - timedelta(minutes=14)
-        )
-        db.add(ai_t1)
-
-        t1_note_pub = TicketNote(
-            ticket_id=t1.id,
-            author_id=staff_members[0].id,
-            author_name=staff_members[0].name,
-            content="Fan motor inspected. Capacitor replacement completed. Running operational test.",
-            is_internal=False,
-            created_at=now - timedelta(minutes=20)
-        )
-        t1_note_priv = TicketNote(
-            ticket_id=t1.id,
-            author_id=staff_members[0].id,
-            author_name=staff_members[0].name,
-            content="Internal: The old capacitor was bulged due to past grid surge. Replaced with genuine OEM stock from rack B4.",
-            is_internal=True,
-            created_at=now - timedelta(minutes=18)
-        )
-        db.add_all([t1_note_pub, t1_note_priv])
-
-        # Ticket 2: Overdue Escalated Ticket (demonstrates SLA breach & alert)
-        t2 = Ticket(
-            ticket_number="TKT-MNT-1002",
-            title="Bathroom Faucet Heavy Leakage - Room 205",
-            description="Continuous high-pressure leak from hot water mixer tap creating slip hazard.",
-            department_id="maintenance",
-            room_id=rooms[1].id,
-            room_number=rooms[1].room_number,
-            category="Plumbing",
-            priority="high",
-            status="acknowledged",
-            is_escalated=True,
-            escalation_level=2,
-            escalation_reason="Resolution SLA deadline breached. Immediate supervisor review required.",
-            assigned_staff_id=staff_members[1].id,  # Kiran
-            assigned_supervisor_id=sup_mnt.id,
-            sla_acknowledgement_deadline=now - timedelta(minutes=150),
-            sla_resolution_deadline=now - timedelta(minutes=35),  # 35 mins OVERDUE!
-            acknowledged_at=now - timedelta(minutes=140),
-            delay_reason="Waiting for specialized ceramic cartridge shutoff valve from central store",
-            revised_eta=now + timedelta(minutes=45),
-            created_at=now - timedelta(minutes=180)
-        )
-        db.add(t2)
-        db.flush()
-
-        esc_t2 = EscalationLog(
-            ticket_id=t2.id,
-            escalation_level=2,
-            trigger_reason="Resolution target time exceeded (120 mins). Ticket escalated to Operations Supervisor Vikramaditya Rao.",
-            notified_supervisor_id=sup_mnt.id,
-            delivery_status="delivered",
-            created_at=now - timedelta(minutes=35)
-        )
-        db.add(esc_t2)
-
-        # Ticket 3: Nursing STAT IV pump alert
-        t3 = Ticket(
-            ticket_number="TKT-NUR-1003",
-            title="IV Infusion Pump Occlusion Alarm - ICU Bed 04",
-            description="Infusion pump sounding downstream occlusion alarm. Patient experiencing mild discomfort.",
-            department_id="nursing",
-            room_id=rooms[3].id,
-            room_number=rooms[3].room_number,
-            category="Nurse Call",
-            priority="critical",
-            status="in_progress",
-            is_escalated=False,
-            assigned_staff_id=staff_members[2].id,  # Priya
-            assigned_supervisor_id=sup_nur.id,
-            sla_acknowledgement_deadline=now - timedelta(minutes=15),
-            sla_resolution_deadline=now + timedelta(minutes=10),
-            acknowledged_at=now - timedelta(minutes=18),
-            in_progress_at=now - timedelta(minutes=12),
-            created_at=now - timedelta(minutes=20)
-        )
-        db.add(t3)
-
-        # Ticket 4: Housekeeping sanitization
-        t4 = Ticket(
-            ticket_number="TKT-HSK-1004",
-            title="Post-Discharge Terminal Room Sanitization - Room 312",
-            description="Patient discharged at 10:30 AM. Deep UV sanitization and linen reset required for next scheduled admission.",
-            department_id="housekeeping",
-            room_id=rooms[2].id,
-            room_number=rooms[2].room_number,
-            category="Housekeeping",
-            priority="medium",
-            status="assigned",
-            is_escalated=False,
-            assigned_staff_id=staff_members[4].id,  # Suresh
-            assigned_supervisor_id=sup_mnt.id,
-            sla_acknowledgement_deadline=now + timedelta(minutes=25),
-            sla_resolution_deadline=now + timedelta(minutes=85),
-            created_at=now - timedelta(minutes=5)
-        )
-        db.add(t4)
-
-        # Ticket 5: Closed Ticket with Full AI and Supervisor Verification
-        t5 = Ticket(
-            ticket_number="TKT-MNT-1000",
-            title="Corridor Emergency Light Flickering - Floor 5",
-            description="Ballast failure causing high frequency strobe in VIP Pavilion corridor.",
-            department_id="maintenance",
-            room_id=rooms[4].id,
-            room_number=rooms[4].room_number,
-            category="Lighting",
-            priority="medium",
-            status="closed",
-            is_escalated=False,
-            assigned_staff_id=staff_members[0].id,
-            assigned_supervisor_id=sup_mnt.id,
-            sla_acknowledgement_deadline=now - timedelta(hours=5),
-            sla_resolution_deadline=now - timedelta(hours=2),
-            acknowledged_at=now - timedelta(hours=4, minutes=50),
-            in_progress_at=now - timedelta(hours=4, minutes=10),
-            resolution_submitted_at=now - timedelta(hours=3),
-            closed_at=now - timedelta(hours=2, minutes=40),
-            resolution_summary="Installed new 18W Philips LED driver unit. Lux meter reading: 320 lux.",
-            parts_replaced="18W Philips Constant Current Driver",
-            functional_test_notes="Flicker index tested at 0.02 (standard < 0.05). Emergency battery backup verified.",
-            created_at=now - timedelta(hours=5, minutes=10)
-        )
-        db.add(t5)
-
-        # Initial audit logs
-        db.add_all([
-            AuditLog(
-                ticket_id=t1.id,
-                action="TICKET_INITIAL_SUBMISSION",
-                actor_name="Patient (Room 204)",
-                actor_role="patient",
-                details=json.dumps({"room": "Room 204", "category": "Ceiling Fan"}),
-                created_at=now - timedelta(minutes=110)
-            ),
-            AuditLog(
-                ticket_id=t1.id,
-                action="RESOLUTION_SUBMITTED",
-                actor_id=staff_members[0].id,
-                actor_name=staff_members[0].name,
-                actor_role="staff",
-                details=json.dumps({"parts": "3.15uF Havells Motor Capacitor"}),
-                created_at=now - timedelta(minutes=15)
-            ),
-            AuditLog(
-                ticket_id=t2.id,
-                action="SLA_RESOLUTION_BREACH",
-                actor_name="SLA Monitor Engine",
-                actor_role="system",
-                details=json.dumps({"breach_level": 2, "overdue_minutes": 35}),
-                created_at=now - timedelta(minutes=35)
-            )
-        ])
-
-        db.commit()
         print("Successfully seeded CareOps AI database with 6 departments, staff, rooms, and live tickets!")
 
     except Exception as e:
@@ -472,6 +244,258 @@ def seed_database():
         raise e
     finally:
         db.close()
+
+
+def seed_demo_tickets(db: Session):
+    """Seeds or re-seeds 5 realistic demonstration tickets across hospital departments"""
+    now = utc_now()
+    rooms = db.query(Room).order_by(Room.id).all()
+    if not rooms or len(rooms) < 5:
+        return
+
+    staff_members = db.query(User).filter(User.role == "staff").order_by(User.id).all()
+    if not staff_members:
+        return
+
+    sup_mnt = db.query(User).filter(User.department_id == "maintenance", User.role == "supervisor").first()
+    sup_nur = db.query(User).filter(User.department_id == "nursing", User.role == "supervisor").first()
+    if not sup_mnt:
+        sup_mnt = staff_members[0]
+    if not sup_nur:
+        sup_nur = staff_members[0]
+
+    # Ticket 1: The flagship Ceiling Fan repair with AI verification
+    t1 = Ticket(
+        ticket_number="TKT-MNT-1001",
+        title="Ceiling Fan Not Rotating - Room 204",
+        description="Patient in Bed 1 reports the ceiling fan fails to start when regulator switch is turned to max. Whirring noise heard from the motor capacitor.",
+        voice_recording_url="/uploads/audio/demo_fan_complaint.webm",
+        voice_transcription="Hello nurse station, the overhead ceiling fan in room 204 isn't spinning even though the wall switch is on. It's getting quite warm.",
+        department_id="maintenance",
+        room_id=rooms[0].id,
+        room_number=rooms[0].room_number,
+        category="Ceiling Fan",
+        priority="high",
+        status="resolution_submitted",
+        is_escalated=False,
+        assigned_staff_id=staff_members[0].id,  # Rajesh
+        assigned_supervisor_id=sup_mnt.id,
+        sla_acknowledgement_deadline=now - timedelta(minutes=90),
+        sla_resolution_deadline=now + timedelta(minutes=40),
+        acknowledged_at=now - timedelta(minutes=100),
+        in_progress_at=now - timedelta(minutes=80),
+        resolution_submitted_at=now - timedelta(minutes=15),
+        resolution_summary="Replaced faulty 3.15uF capacitor and re-lubricated motor ball bearing assembly. Fan inspected for balanced clearance.",
+        parts_replaced="3.15uF Havells Motor Capacitor",
+        functional_test_notes="Ran at Step 5 for 10 minutes without rattling or heat buildup. Blade clearance 34cm verified.",
+        patient_contact="+91 98451 00293",
+        created_at=now - timedelta(minutes=110)
+    )
+    db.add(t1)
+    db.flush()
+
+    # Evidences for T1
+    ev_t1_before = Evidence(
+        ticket_id=t1.id,
+        stage="before",
+        media_type="video",
+        file_url="https://assets.mixkit.co/videos/preview/mixkit-ceiling-fan-in-a-white-room-42861-large.mp4",
+        file_size_bytes=4210000,
+        file_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        equipment_type="Ceiling Fan",
+        uploaded_by_id=staff_members[0].id,
+        notes="Before: Switch turned on, motor stationary. Video demonstrates complete absence of blade rotation."
+    )
+    ev_t1_after = Evidence(
+        ticket_id=t1.id,
+        stage="after",
+        media_type="video",
+        file_url="https://assets.mixkit.co/videos/preview/mixkit-ceiling-fan-rotating-in-a-room-42862-large.mp4",
+        file_size_bytes=5180000,
+        file_hash="ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+        equipment_type="Ceiling Fan",
+        uploaded_by_id=staff_members[0].id,
+        notes="After: Capacitor replaced, fan running smoothly at high speed. Blade motion clearly visible."
+    )
+    db.add_all([ev_t1_before, ev_t1_after])
+    db.flush()
+
+    ai_t1 = AIVerificationJob(
+        ticket_id=t1.id,
+        status="completed",
+        before_evidence_id=ev_t1_before.id,
+        after_evidence_id=ev_t1_after.id,
+        evidence_relevance="high",
+        equipment_match="confirmed_match",
+        visible_fault_assessment="fault_cleared",
+        after_repair_functional_evidence="movement_observed",
+        media_quality="high",
+        missing_evidence="[]",
+        inconsistencies="[]",
+        ai_recommendation="likely_resolved",
+        review_requirement="standard_signoff",
+        confidence_score=0.92,
+        analysis_notes="Both before and after video streams clearly demonstrate identical Crompton ceiling fan fixture in Room 204. Pre-repair: stationary blades with energized switch circuit. Post-repair: continuous 320 RPM rotational motion detected with zero blade wobble. Operational criteria satisfied.",
+        model_version="careops-vision-v2.4",
+        analysis_timestamp=now - timedelta(minutes=14)
+    )
+    db.add(ai_t1)
+
+    t1_note_pub = TicketNote(
+        ticket_id=t1.id,
+        author_id=staff_members[0].id,
+        author_name=staff_members[0].name,
+        content="Fan motor inspected. Capacitor replacement completed. Running operational test.",
+        is_internal=False,
+        created_at=now - timedelta(minutes=20)
+    )
+    t1_note_priv = TicketNote(
+        ticket_id=t1.id,
+        author_id=staff_members[0].id,
+        author_name=staff_members[0].name,
+        content="Internal: The old capacitor was bulged due to past grid surge. Replaced with genuine OEM stock from rack B4.",
+        is_internal=True,
+        created_at=now - timedelta(minutes=18)
+    )
+    db.add_all([t1_note_pub, t1_note_priv])
+
+    # Ticket 2: Overdue Escalated Ticket (demonstrates SLA breach & alert)
+    t2 = Ticket(
+        ticket_number="TKT-MNT-1002",
+        title="Bathroom Faucet Heavy Leakage - Room 205",
+        description="Continuous high-pressure leak from hot water mixer tap creating slip hazard.",
+        department_id="maintenance",
+        room_id=rooms[1].id,
+        room_number=rooms[1].room_number,
+        category="Plumbing",
+        priority="high",
+        status="acknowledged",
+        is_escalated=True,
+        escalation_level=2,
+        escalation_reason="Resolution SLA deadline breached. Immediate supervisor review required.",
+        assigned_staff_id=staff_members[1].id if len(staff_members) > 1 else staff_members[0].id,
+        assigned_supervisor_id=sup_mnt.id,
+        sla_acknowledgement_deadline=now - timedelta(minutes=150),
+        sla_resolution_deadline=now - timedelta(minutes=35),
+        acknowledged_at=now - timedelta(minutes=140),
+        delay_reason="Waiting for specialized ceramic cartridge shutoff valve from central store",
+        revised_eta=now + timedelta(minutes=45),
+        created_at=now - timedelta(minutes=180)
+    )
+    db.add(t2)
+    db.flush()
+
+    esc_t2 = EscalationLog(
+        ticket_id=t2.id,
+        escalation_level=2,
+        trigger_reason="Resolution target time exceeded (120 mins). Ticket escalated to Operations Supervisor Vikramaditya Rao.",
+        notified_supervisor_id=sup_mnt.id,
+        delivery_status="delivered",
+        created_at=now - timedelta(minutes=35)
+    )
+    db.add(esc_t2)
+
+    # Ticket 3: Nursing STAT IV pump alert
+    t3 = Ticket(
+        ticket_number="TKT-NUR-1003",
+        title="IV Infusion Pump Occlusion Alarm - ICU Bed 04",
+        description="Infusion pump sounding downstream occlusion alarm. Patient experiencing mild discomfort.",
+        department_id="nursing",
+        room_id=rooms[3].id,
+        room_number=rooms[3].room_number,
+        category="Nurse Call",
+        priority="critical",
+        status="in_progress",
+        is_escalated=False,
+        assigned_staff_id=staff_members[2].id if len(staff_members) > 2 else staff_members[0].id,
+        assigned_supervisor_id=sup_nur.id,
+        sla_acknowledgement_deadline=now - timedelta(minutes=15),
+        sla_resolution_deadline=now + timedelta(minutes=10),
+        acknowledged_at=now - timedelta(minutes=18),
+        in_progress_at=now - timedelta(minutes=12),
+        created_at=now - timedelta(minutes=20)
+    )
+    db.add(t3)
+
+    # Ticket 4: Housekeeping sanitization
+    t4 = Ticket(
+        ticket_number="TKT-HSK-1004",
+        title="Post-Discharge Terminal Room Sanitization - Room 312",
+        description="Patient discharged at 10:30 AM. Deep UV sanitization and linen reset required for next scheduled admission.",
+        department_id="housekeeping",
+        room_id=rooms[2].id,
+        room_number=rooms[2].room_number,
+        category="Housekeeping",
+        priority="medium",
+        status="assigned",
+        is_escalated=False,
+        assigned_staff_id=staff_members[4].id if len(staff_members) > 4 else staff_members[0].id,
+        assigned_supervisor_id=sup_mnt.id,
+        sla_acknowledgement_deadline=now + timedelta(minutes=25),
+        sla_resolution_deadline=now + timedelta(minutes=85),
+        created_at=now - timedelta(minutes=5)
+    )
+    db.add(t4)
+
+    # Ticket 5: Closed Ticket with Full AI and Supervisor Verification
+    t5 = Ticket(
+        ticket_number="TKT-MNT-1000",
+        title="Corridor Emergency Light Flickering - Floor 5",
+        description="Ballast failure causing high frequency strobe in VIP Pavilion corridor.",
+        department_id="maintenance",
+        room_id=rooms[4].id,
+        room_number=rooms[4].room_number,
+        category="Lighting",
+        priority="medium",
+        status="closed",
+        is_escalated=False,
+        assigned_staff_id=staff_members[0].id,
+        assigned_supervisor_id=sup_mnt.id,
+        sla_acknowledgement_deadline=now - timedelta(hours=5),
+        sla_resolution_deadline=now - timedelta(hours=2),
+        acknowledged_at=now - timedelta(hours=4, minutes=50),
+        in_progress_at=now - timedelta(hours=4, minutes=10),
+        resolution_submitted_at=now - timedelta(hours=3),
+        closed_at=now - timedelta(hours=2, minutes=40),
+        resolution_summary="Installed new 18W Philips LED driver unit. Lux meter reading: 320 lux.",
+        parts_replaced="18W Philips Constant Current Driver",
+        functional_test_notes="Flicker index tested at 0.02 (standard < 0.05). Emergency battery backup verified.",
+        created_at=now - timedelta(hours=5, minutes=10)
+    )
+    db.add(t5)
+    db.flush()
+
+    # Initial audit logs
+    db.add_all([
+        AuditLog(
+            ticket_id=t1.id,
+            action="TICKET_INITIAL_SUBMISSION",
+            actor_name="Patient (Room 204)",
+            actor_role="patient",
+            details=json.dumps({"room": "Room 204", "category": "Ceiling Fan"}),
+            created_at=now - timedelta(minutes=110)
+        ),
+        AuditLog(
+            ticket_id=t1.id,
+            action="RESOLUTION_SUBMITTED",
+            actor_id=staff_members[0].id,
+            actor_name=staff_members[0].name,
+            actor_role="staff",
+            details=json.dumps({"parts": "3.15uF Havells Motor Capacitor"}),
+            created_at=now - timedelta(minutes=15)
+        ),
+        AuditLog(
+            ticket_id=t2.id,
+            action="SLA_RESOLUTION_BREACH",
+            actor_name="SLA Monitor Engine",
+            actor_role="system",
+            details=json.dumps({"breach_level": 2, "overdue_minutes": 35}),
+            created_at=now - timedelta(minutes=35)
+        )
+    ])
+
+    db.commit()
+    print("Demo tickets successfully seeded!")
 
 if __name__ == "__main__":
     seed_database()
