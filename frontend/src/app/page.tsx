@@ -75,6 +75,13 @@ export default function CareOpsApp() {
     time: string;
   } | null>(null);
 
+  // Cross-view ticket filter coordination
+  const [ticketFilterState, setTicketFilterState] = useState<{ status?: string; dept?: string; sla?: string }>({
+    status: "all",
+    dept: "all",
+    sla: "all",
+  });
+
   // Superadmin Database Wipe State
   const [clearMode, setClearMode] = useState<"purge_operational" | "reset_all">("purge_operational");
   const [clearConfirmText, setClearConfirmText] = useState("");
@@ -641,9 +648,21 @@ export default function CareOpsApp() {
           {currentTab === "overview" && (
             <OverviewDashboard
               metrics={metrics}
+              currentUser={currentUser}
               onSelectTicket={(id) => setSelectedTicketId(id)}
-              onViewAllTickets={() => setCurrentTab("tickets")}
+              onViewAllTickets={(filterStatus, deptId, slaFilter) => {
+                setTicketFilterState({
+                  status: filterStatus || "all",
+                  dept: deptId || "all",
+                  sla: slaFilter || "all",
+                });
+                setCurrentTab("tickets");
+              }}
               onViewAIVerification={() => setCurrentTab("ai-verify")}
+              onNavigateTab={(tab) => setCurrentTab(tab)}
+              onOpenCreateTicket={() => setShowCreateModal(true)}
+              onRunSLACheck={handleRunSLACheck}
+              isRunningSLACheck={isRunningSLACheck}
             />
           )}
 
@@ -654,6 +673,9 @@ export default function CareOpsApp() {
               currentUser={currentUser}
               onSelectTicket={(id) => setSelectedTicketId(id)}
               onOpenCreateModal={() => setShowCreateModal(true)}
+              initialStatusFilter={ticketFilterState.status}
+              initialDeptFilter={ticketFilterState.dept}
+              initialSlaFilter={ticketFilterState.sla}
             />
           )}
 

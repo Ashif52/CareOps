@@ -24,6 +24,9 @@ interface TicketTableProps {
   currentUser?: UserType | null;
   onSelectTicket: (ticketId: number) => void;
   onOpenCreateModal: () => void;
+  initialDeptFilter?: string;
+  initialStatusFilter?: string;
+  initialSlaFilter?: string;
 }
 
 export function TicketTable({
@@ -32,15 +35,24 @@ export function TicketTable({
   currentUser,
   onSelectTicket,
   onOpenCreateModal,
+  initialDeptFilter,
+  initialStatusFilter,
+  initialSlaFilter,
 }: TicketTableProps) {
   const isStaff = currentUser?.role === "staff";
   const staffDept = currentUser?.department_id;
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [deptFilter, setDeptFilter] = useState(isStaff && staffDept ? staffDept : "all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [deptFilter, setDeptFilter] = useState(initialDeptFilter || (isStaff && staffDept ? staffDept : "all"));
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [slaFilter, setSlaFilter] = useState("all"); // "all", "overdue", "due_soon"
+  const [slaFilter, setSlaFilter] = useState(initialSlaFilter || "all"); // "all", "overdue", "due_soon"
+
+  React.useEffect(() => {
+    if (initialDeptFilter !== undefined) setDeptFilter(initialDeptFilter);
+    if (initialStatusFilter !== undefined) setStatusFilter(initialStatusFilter);
+    if (initialSlaFilter !== undefined) setSlaFilter(initialSlaFilter);
+  }, [initialDeptFilter, initialStatusFilter, initialSlaFilter]);
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
@@ -59,7 +71,11 @@ export function TicketTable({
       if (deptFilter !== "all" && t.department_id !== deptFilter) return false;
 
       // Status
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
+      if (statusFilter === "open") {
+        if (t.status === "closed") return false;
+      } else if (statusFilter !== "all" && t.status !== statusFilter) {
+        return false;
+      }
 
       // Priority
       if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
@@ -269,6 +285,7 @@ export function TicketTable({
               className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
             >
               <option value="all">All Statuses</option>
+              <option value="open">All Open (Active)</option>
               <option value="submitted">Submitted</option>
               <option value="assigned">Assigned</option>
               <option value="acknowledged">Acknowledged</option>
