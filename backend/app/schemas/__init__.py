@@ -65,8 +65,10 @@ class StaffCreate(BaseModel):
     department_id: str
     designation: str
     role: str = "staff"
+    supervisor_id: Optional[int] = None
     initial_password: Optional[str] = "TempPass2026!"
     require_password_change: bool = True
+    permissions: Optional[List[str]] = None
 
 class StaffUpdate(BaseModel):
     name: Optional[str] = None
@@ -74,6 +76,10 @@ class StaffUpdate(BaseModel):
     department_id: Optional[str] = None
     designation: Optional[str] = None
     role: Optional[str] = None
+    supervisor_id: Optional[int] = None
+
+class UserPermissionsUpdateRequest(BaseModel):
+    permissions: List[str]
 
 class StaffActionReason(BaseModel):
     reason: str
@@ -91,6 +97,8 @@ class StaffResponse(BaseUTCModel):
     role: str
     department_id: Optional[str] = None
     department_name: Optional[str] = None
+    supervisor_id: Optional[int] = None
+    supervisor_name: Optional[str] = None
     designation: Optional[str] = None
     account_status: str
     is_active: bool
@@ -258,11 +266,11 @@ class PatientTicketCreate(BaseModel):
     department_id: str
     category: str
     description: str
+    patient_contact: str  # Mandatory mobile number for WhatsApp tracking
     title: Optional[str] = None
     idempotency_key: Optional[str] = None
     voice_recording_base64: Optional[str] = None
     voice_transcription: Optional[str] = None
-    patient_contact: Optional[str] = None
     photo_base64: Optional[str] = None
 
 class StaffTicketCreate(BaseModel):

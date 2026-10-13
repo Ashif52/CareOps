@@ -94,47 +94,47 @@ export function QRRoomManager({
   };
 
   return (
-    <div className="p-8 sm:p-10 space-y-8 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-[#176B63] text-white shadow-md shadow-[#176B63]/20">
-              <QrCode className="h-6 w-6" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-[#176B63] text-white shadow-sm">
+              <QrCode className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#17212F] tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-[#17212F] tracking-tight">
               Hospital Room QR Placards & Tokens
             </h1>
           </div>
-          <p className="text-sm text-[#667085] mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-[#667085] mt-0.5 font-medium">
             Real 2D scannable QR endpoints installed at patient bedsides for anonymous, app-less service requests
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {isAdmin ? (
             <>
-              <span className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E8F3F1] border border-[#A7D7D1] text-[#176B63] text-xs font-bold">
-                <ShieldCheck className="h-4 w-4" />
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E8F3F1] border border-[#A7D7D1] text-[#176B63] text-[11px] font-bold">
+                <ShieldCheck className="h-3.5 w-3.5" />
                 <span>Admin Clearance: QR Generator Active</span>
               </span>
 
               {rooms.length > 0 && (
                 <button
                   onClick={() => setSelectedRoomForPlacard(rooms[0])}
-                  className="px-5 py-2.5 rounded-2xl bg-white hover:bg-[#F7F8FA] border-2 border-[#E5E9EF] text-[#17212F] text-sm font-bold shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#F7F8FA] border border-[#E5E9EF] text-[#17212F] text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
-                  <Printer className="h-4.5 w-4.5 text-[#176B63]" />
-                  <span>Print Bedside Placards</span>
+                  <Printer className="h-4 w-4 text-[#176B63]" />
+                  <span>Print Placards</span>
                 </button>
               )}
 
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="px-5 py-2.5 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm font-bold shadow-md shadow-[#176B63]/25 flex items-center gap-2 transition-all cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                <Plus className="h-4.5 w-4.5" />
-                <span>Register New Room & QR</span>
+                <Plus className="h-4 w-4" />
+                <span>Register Room & QR</span>
               </button>
             </>
           ) : (

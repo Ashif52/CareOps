@@ -66,3 +66,14 @@ def require_roles(*roles: str):
             )
         return current_user
     return role_checker
+
+def require_permission(permission_key: str):
+    from app.services.rbac_service import has_permission
+    def permission_checker(current_user: User = Depends(get_current_user)) -> User:
+        if not has_permission(current_user, permission_key):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Missing required permission: {permission_key}"
+            )
+        return current_user
+    return permission_checker

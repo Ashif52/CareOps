@@ -104,19 +104,19 @@ export function SLAPoliciesView({
   };
 
   return (
-    <div className="p-8 sm:p-10 space-y-8 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-[#176B63] text-white shadow-md shadow-[#176B63]/20">
-              <Clock className="h-6 w-6" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-[#176B63] text-white shadow-sm">
+              <Clock className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-[#0F172A] tracking-tight">
               Escalation
             </h1>
           </div>
-          <p className="text-sm sm:text-base text-[#475569] mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-[#475569] mt-0.5 font-medium">
             Configurable hospital operational response targets & automated supervisor escalation
           </p>
         </div>
@@ -124,7 +124,7 @@ export function SLAPoliciesView({
         <button
           onClick={onRunSLACheck}
           disabled={isRunningCheck}
-          className="px-5 py-2.5 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm font-bold shadow-md shadow-[#176B63]/25 flex items-center gap-2.5 transition-all disabled:opacity-50 cursor-pointer"
+          className="px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs sm:text-sm font-bold shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw className={`h-4 w-4 ${isRunningCheck ? "animate-spin" : ""}`} />
           <span>{isRunningCheck ? "Scanning Tickets..." : "Run SLA Scan Cycle Now"}</span>
@@ -132,7 +132,7 @@ export function SLAPoliciesView({
       </div>
 
       {/* SMTPS Maintenance Escalation Routing Card & Database Editor */}
-      <div className="bg-white rounded-3xl border-2 border-[#CBD5E1] shadow-sm p-6 sm:p-7 space-y-4">
+      <div className="bg-white rounded-xl border border-[#CBD5E1] shadow-2xs p-4 sm:p-5 space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-[#DC2626]/10 text-[#DC2626]">
@@ -379,15 +379,15 @@ export function SLAPoliciesView({
       </div>
 
       {/* SLA Policy Table */}
-      <div className="bg-white rounded-3xl border-2 border-[#94A3B8] shadow-lg overflow-hidden space-y-0">
-        <div className="p-6 sm:p-7 border-b-2 border-[#CBD5E1] flex items-center justify-between bg-[#F8FAFC]">
+      <div className="bg-white rounded-xl border border-[#CBD5E1] shadow-xs overflow-hidden space-y-0">
+        <div className="p-4 sm:p-5 border-b border-[#CBD5E1] flex items-center justify-between bg-[#F8FAFC]">
           <div>
-            <h3 className="font-black text-xl sm:text-2xl text-[#0F172A]">Active SLA Target Matrix</h3>
-            <p className="text-sm sm:text-base text-[#334155] font-semibold mt-1">
+            <h3 className="font-bold text-base sm:text-lg text-[#0F172A]">Active SLA Target Matrix</h3>
+            <p className="text-xs sm:text-sm text-[#475569] font-medium mt-0.5">
               Response and resolution deadlines enforced by persistent background worker
             </p>
           </div>
-          <span className="text-sm sm:text-base font-black text-[#0D9488] bg-[#E8F3F1] px-4 py-1.5 rounded-full border-2 border-[#99F6E4] shadow-xs">
+          <span className="text-xs font-bold text-[#0D9488] bg-[#E8F3F1] px-3 py-1 rounded-full border border-[#99F6E4] shadow-2xs">
             {policies.length} Active Policies
           </span>
         </div>
@@ -395,17 +395,17 @@ export function SLAPoliciesView({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#E2E8F0] border-b-2 border-[#94A3B8] text-sm sm:text-base font-black text-[#0F172A] uppercase tracking-wider">
-                <th className="py-4.5 px-6">Department</th>
-                <th className="py-4.5 px-6">Priority</th>
-                <th className="py-4.5 px-6">Ack Target</th>
-                <th className="py-4.5 px-6">Resolution Target</th>
-                <th className="py-4.5 px-6">Reminders</th>
-                <th className="py-4.5 px-6">Escalation Trigger</th>
-                <th className="py-4.5 px-6">Closure Policy</th>
+              <tr className="bg-[#F1F5F9] border-b border-[#CBD5E1] text-xs font-bold text-[#0F172A] uppercase tracking-wider">
+                <th className="py-2.5 px-4">Department</th>
+                <th className="py-2.5 px-4">Priority</th>
+                <th className="py-2.5 px-4">Ack Target</th>
+                <th className="py-2.5 px-4">Resolution Target</th>
+                <th className="py-2.5 px-4">Reminders</th>
+                <th className="py-2.5 px-4">Escalation Trigger</th>
+                <th className="py-2.5 px-4">Closure Policy</th>
               </tr>
             </thead>
-            <tbody className="divide-y-2 divide-[#E2E8F0]">
+            <tbody className="divide-y divide-[#E2E8F0] text-xs sm:text-sm">
               {policies.map((p) => {
                 const hoursFormatted =
                   p.resolution_target_minutes >= 60
@@ -417,13 +417,13 @@ export function SLAPoliciesView({
                     : "";
 
                 return (
-                  <tr key={p.id} className="hover:bg-[#F1F5F9] transition-colors">
-                    <td className="py-5 px-6 font-black text-base sm:text-lg text-[#0F172A] capitalize">
+                  <tr key={p.id} className="hover:bg-[#F8FAFC] transition-colors">
+                    <td className="py-2.5 px-4 font-bold text-[#0F172A] capitalize">
                       {p.department_id}
                     </td>
-                    <td className="py-5 px-6">
+                    <td className="py-2.5 px-4">
                       <span
-                        className={`text-xs sm:text-sm font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border-2 shadow-xs ${
+                        className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
                           p.priority === "critical"
                             ? "bg-[#FEE2E2] text-[#991B1B] border-[#EF4444]"
                             : p.priority === "high"
@@ -434,20 +434,20 @@ export function SLAPoliciesView({
                         {p.priority}
                       </span>
                     </td>
-                    <td className="py-5 px-6 font-black tabular-nums text-base sm:text-lg text-[#0F172A]">
+                    <td className="py-2.5 px-4 font-bold tabular-nums text-[#0F172A]">
                       {p.ack_target_minutes} mins
                     </td>
-                    <td className="py-5 px-6 font-black tabular-nums text-base sm:text-lg text-[#0F766E]">
+                    <td className="py-2.5 px-4 font-bold tabular-nums text-[#0F766E]">
                       {p.resolution_target_minutes} mins{hoursFormatted}
                     </td>
-                    <td className="py-5 px-6 text-[#1E293B] font-bold text-sm sm:text-base tabular-nums">
+                    <td className="py-2.5 px-4 text-[#1E293B] font-medium tabular-nums text-xs">
                       T-{p.reminder_1_minutes_before}m & T-{p.reminder_2_minutes_before}m
                     </td>
-                    <td className="py-5 px-6 text-[#DC2626] font-extrabold text-sm sm:text-base">
+                    <td className="py-2.5 px-4 text-[#DC2626] font-semibold text-xs">
                       At deadline breach (Level {p.priority === "critical" ? "2" : "1"})
                     </td>
-                    <td className="py-5 px-6">
-                      <span className="text-xs sm:text-sm text-[#0F766E] bg-[#E6FFFA] border-2 border-[#5EEAD4] px-3.5 py-1.5 rounded-xl font-black inline-block whitespace-nowrap shadow-xs">
+                    <td className="py-2.5 px-4">
+                      <span className="text-[11px] text-[#0F766E] bg-[#E6FFFA] border border-[#5EEAD4] px-2.5 py-1 rounded-md font-bold inline-block whitespace-nowrap">
                         Supervisor Approval Required
                       </span>
                     </td>

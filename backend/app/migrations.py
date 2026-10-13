@@ -29,7 +29,7 @@ def run_migrations():
         datetime_type = "TIMESTAMP WITH TIME ZONE" if is_postgres else "DATETIME"
         bool_type = "BOOLEAN DEFAULT FALSE" if is_postgres else "BOOLEAN DEFAULT 0"
 
-        columns_to_ensure = [
+        columns_to_ensure_users = [
             ("employee_id", "VARCHAR(50)"),
             ("designation", "VARCHAR(100)"),
             ("account_status", "VARCHAR(30) DEFAULT 'active'"),
@@ -40,16 +40,79 @@ def run_migrations():
             ("must_change_password", bool_type),
             ("password_reset_token", "VARCHAR(255)"),
             ("password_reset_expires_at", datetime_type),
-            ("permissions_override", "TEXT")
+            ("permissions_override", "TEXT"),
+            ("supervisor_id", "INTEGER"),
+            ("is_demo", bool_type)
         ]
 
-        for col_name, col_def in columns_to_ensure:
+        for col_name, col_def in columns_to_ensure_users:
             if col_name not in existing_cols:
                 try:
                     conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
                     logger.info(f"Added column users.{col_name}")
                 except Exception as ex:
                     logger.warning(f"Column users.{col_name} might already exist: {ex}")
+
+        # Check existing columns in tickets table
+        try:
+            existing_ticket_cols = {col["name"] for col in inspector.get_columns("tickets")}
+        except Exception:
+            existing_ticket_cols = set()
+
+        columns_to_ensure_tickets = [
+            ("patient_tracking_token", "VARCHAR(100)"),
+            ("assigned_at", datetime_type),
+            ("en_route_at", datetime_type),
+            ("work_started_at", datetime_type),
+            ("work_completed_at", datetime_type),
+            ("estimated_arrival_minutes", "INTEGER"),
+            ("estimated_arrival_at", datetime_type),
+            ("is_demo", bool_type)
+        ]
+
+        for col_name, col_def in columns_to_ensure_tickets:
+            if col_name not in existing_ticket_cols:
+                try:
+                    conn.exec_driver_sql(f"ALTER TABLE tickets ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"Added column tickets.{col_name}")
+                except Exception as ex:
+                    logger.warning(f"Column tickets.{col_name} might already exist: {ex}")
+
+        # Check existing columns in rooms table
+        try:
+            existing_room_cols = {col["name"] for col in inspector.get_columns("rooms")}
+            if "is_demo" not in existing_room_cols:
+                conn.exec_driver_sql(f"ALTER TABLE rooms ADD COLUMN is_demo {bool_type}")
+        except Exception as ex:
+            logger.warning(f"Could not check/add rooms.is_demo: {ex}")
+
+        # Check existing columns in evidences table
+        try:
+            existing_evidence_cols = {col["name"] for col in inspector.get_columns("evidences")}
+            if "is_demo" not in existing_evidence_cols:
+                conn.exec_driver_sql(f"ALTER TABLE evidences ADD COLUMN is_demo {bool_type}")
+        except Exception as ex:
+            logger.warning(f"Could not check/add evidences.is_demo: {ex}")
+
+        # Check existing columns in ai_verifications table
+        try:
+            existing_ai_cols = {col["name"] for col in inspector.get_columns("ai_verifications")}
+            if "is_demo" not in existing_ai_cols:
+                conn.exec_driver_sql(f"ALTER TABLE ai_verifications ADD COLUMN is_demo {bool_type}")
+            if "provider_selected" not in existing_ai_cols:
+                conn.exec_driver_sql("ALTER TABLE ai_verifications ADD COLUMN provider_selected VARCHAR(50) DEFAULT 'mock'")
+            if "model_name_selected" not in existing_ai_cols:
+                conn.exec_driver_sql("ALTER TABLE ai_verifications ADD COLUMN model_name_selected VARCHAR(100) DEFAULT 'careops-vision-default'")
+        except Exception as ex:
+            logger.warning(f"Could not check/add ai_verifications columns: {ex}")
+
+        # Check existing columns in google_reviews table
+        try:
+            existing_gr_cols = {col["name"] for col in inspector.get_columns("google_reviews")}
+            if "is_demo" not in existing_gr_cols:
+                conn.exec_driver_sql(f"ALTER TABLE google_reviews ADD COLUMN is_demo {bool_type}")
+        except Exception as ex:
+            logger.warning(f"Could not check/add google_reviews.is_demo: {ex}")
 
         if is_postgres:
             try:
@@ -72,6 +135,10 @@ def run_migrations():
                 logger.warning(f"Could not update audit_logs constraint: {e}")
 
         conn.commit()
+
+    # Ensure all tables (including newly added tables like nps_responses, whatsapp_messages, maintenance_audit_logs, system_security_settings) exist
+    from app.database import Base
+    Base.metadata.create_all(bind=engine)
 
     # Backfill seed users with Employee IDs & Designations
     db = SessionLocal()
@@ -215,12 +282,105 @@ def run_migrations():
                 )
                 db.add(new_u)
                 logger.info(f"Provisioned personnel: {p['name']} ({p['role']})")
-            elif exists.role != p["role"] and p["role"] == "superadmin":
-                exists.role = "superadmin"
-                db.add(exists)
+        # 3. Standardize Departments to exact 5: Maintenance, Housekeeping, Linen, Medical, IT
+        from app.models import Department, Ticket
+        
+        canonical_depts = [
+            {
+                "id": "maintenance",
+                "name": "Maintenance",
+                "code": "MNT",
+                "icon": "Wrench",
+                "description": "Electrical and lighting, AC and climate control, plumbing and restroom, general facilities."
+            },
+            {
+                "id": "housekeeping",
+                "name": "Housekeeping",
+                "code": "HSK",
+                "icon": "Sparkles",
+                "description": "Room turnover & cleaning, waste disposal, spill & sanitation, amenities restock."
+            },
+            {
+                "id": "linen",
+                "name": "Linen",
+                "code": "LIN",
+                "icon": "Shirt",
+                "description": "Bed sheet exchange, pillow & blanket request, towel restock, patient gown replacement."
+            },
+            {
+                "id": "medical",
+                "name": "Medical",
+                "code": "MED",
+                "icon": "Stethoscope",
+                "description": "Attending physician assistance, clinical inquiries, vitals check, and nurse calls."
+            },
+            {
+                "id": "it",
+                "name": "IT",
+                "code": "IT",
+                "icon": "Laptop",
+                "description": "Bedside TVs and screens, patient Wi-Fi, room network and telephony equipment."
+            }
+        ]
+
+        for cd in canonical_depts:
+            dept_obj = db.query(Department).filter(Department.id == cd["id"]).first()
+            if not dept_obj:
+                dept_obj = Department(
+                    id=cd["id"],
+                    name=cd["name"],
+                    code=cd["code"],
+                    icon=cd["icon"],
+                    description=cd["description"],
+                    is_active=True
+                )
+                db.add(dept_obj)
+            else:
+                dept_obj.name = cd["name"]
+                dept_obj.code = cd["code"]
+                dept_obj.icon = cd["icon"]
+                dept_obj.description = cd["description"]
+                dept_obj.is_active = True
+                db.add(dept_obj)
+
+        db.flush()
+
+        # Migrate legacy departments on tickets and users
+        dept_mappings = {
+            "biomedical": "maintenance",
+            "doctors": "medical",
+            "nursing": "medical",
+            "billing": "medical",
+            "pharmacy": "medical"
+        }
+
+        for old_id, new_id in dept_mappings.items():
+            db.query(Ticket).filter(Ticket.department_id == old_id).update({Ticket.department_id: new_id}, synchronize_session=False)
+            db.query(User).filter(User.department_id == old_id).update({User.department_id: new_id}, synchronize_session=False)
+            # Deactivate obsolete department
+            old_dept = db.query(Department).filter(Department.id == old_id).first()
+            if old_dept:
+                old_dept.is_active = False
+
+        # Assign supervisors to staff in same department if supervisor_id is null
+        maintenance_sup = db.query(User).filter(User.department_id == "maintenance", User.role == "supervisor").first()
+        if maintenance_sup:
+            db.query(User).filter(
+                User.department_id == "maintenance",
+                User.role == "staff",
+                User.supervisor_id == None
+            ).update({User.supervisor_id: maintenance_sup.id}, synchronize_session=False)
+
+        medical_sup = db.query(User).filter(User.department_id == "medical", User.role == "supervisor").first()
+        if medical_sup:
+            db.query(User).filter(
+                User.department_id == "medical",
+                User.role.in_(["staff", "nurse", "doctor"]),
+                User.supervisor_id == None
+            ).update({User.supervisor_id: medical_sup.id}, synchronize_session=False)
 
         db.commit()
-        logger.info("Enterprise IAM backfill completed successfully.")
+        logger.info("Enterprise IAM and Department standardization backfill completed successfully.")
     except Exception as e:
         db.rollback()
         logger.error(f"Error during migration backfill: {e}")

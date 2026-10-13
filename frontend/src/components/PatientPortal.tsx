@@ -65,20 +65,22 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
   const [isValidatingQR, setIsValidatingQR] = useState(true);
   const [qrError, setQrError] = useState<string | null>(null);
 
-  // Flow Step: "auth" -> "categories" -> "form" -> "confirmation"
-  const [step, setStep] = useState<"auth" | "categories" | "form" | "confirmation">("auth");
-  const [patientSession, setPatientSession] = useState<{
-    token: string;
-    type: "guest" | "verified";
-    identifier: string;
-  } | null>(null);
+  // Flow Step: "categories" -> "form" -> "confirmation" (No guest or OTP screens; mobile is required on form)
+  const [step, setStep] = useState<"categories" | "form" | "confirmation">("categories");
 
-  // Phone OTP Verification State
-  const [phoneInput, setPhoneInput] = useState("");
-  const [otpInput, setOtpInput] = useState("");
-  const [showOtpField, setShowOtpField] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  // Helper functions for E.164 phone normalization and validation
+  const normalizeE164 = (phone: string): string => {
+    const cleaned = phone.replace(/[\s\-\(\)]/g, "");
+    if (!cleaned) return "";
+    if (cleaned.startsWith("+")) return cleaned;
+    if (cleaned.length === 10) return `+1${cleaned}`;
+    return `+${cleaned}`;
+  };
+
+  const isValidPhone = (phone: string): boolean => {
+    const cleaned = phone.replace(/[\s\-\(\)]/g, "");
+    return /^\+?[1-9]\d{7,14}$/.test(cleaned);
+  };
 
   // Form Fields
   const [selectedDept, setSelectedDept] = useState<string>("maintenance");
@@ -213,21 +215,23 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
     };
   }, [submittedTicket?.ticket_number]);
 
-  // Service Request Categories (Hospital Standards)
+  // Service Request Categories (Canonical Departments: Maintenance, Housekeeping, Linen, Medical, IT)
   const categories = [
     {
-      id: "maintenance",
+      id: "maint-electrical",
       deptId: "maintenance",
+      deptName: "Maintenance",
       name: "Electrical & Lighting",
       icon: Sparkles,
-      description: "Lights flickering, reading lamp, switches, bed power outlets, TV remote",
+      description: "Lights flickering, reading lamp, switches, bed power outlets",
       color: "border-[#176B63] hover:bg-[#E8F3F1]/40",
       accent: "text-[#176B63] bg-[#E8F3F1]",
-      defaultItems: ["Reading Lamp / Lighting", "Bed Electrical Socket", "Ceiling Fan", "TV / Remote Control"],
+      defaultItems: ["Reading Lamp / Lighting", "Bed Electrical Socket", "Switches", "General Power"],
     },
     {
-      id: "climate",
+      id: "maint-climate",
       deptId: "maintenance",
+      deptName: "Maintenance",
       name: "Air Conditioning & Climate",
       icon: Fan,
       description: "Room too cold, AC not cooling, fan noise, airflow adjustment",
@@ -236,120 +240,72 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
       defaultItems: ["Room Too Cold", "AC Not Cooling", "Fan Noise", "Thermostat Adjustment"],
     },
     {
-      id: "plumbing",
+      id: "maint-plumbing",
       deptId: "maintenance",
+      deptName: "Maintenance",
       name: "Plumbing & Restroom",
       icon: Droplets,
-      description: "Tap leak, flush issue, hot water supply, shower pressure, drain block",
+      description: "Tap leak, flush issue, hot water supply, shower pressure, clogged drain",
       color: "border-[#0891B2] hover:bg-[#ECFEFF]/40",
       accent: "text-[#0891B2] bg-[#ECFEFF]",
       defaultItems: ["Tap Leak", "Hot Water Supply", "Toilet Flush", "Clogged Drain"],
     },
     {
-      id: "housekeeping",
-      deptId: "housekeeping",
-      name: "Housekeeping & Linen",
-      icon: Sparkles,
-      description: "Fresh bed sheets, floor mopping, bathroom sanitization, waste clearance",
-      color: "border-[#D97706] hover:bg-[#FFFBEB]/40",
-      accent: "text-[#D97706] bg-[#FFFBEB]",
-      defaultItems: ["Fresh Bed Linen / Blanket", "Floor Cleaning / Spill", "Restroom Sanitization", "Trash Bin Clearance"],
-    },
-    {
-      id: "biomedical",
+      id: "maint-general",
       deptId: "maintenance",
-      name: "Biomedical & Room Equipment",
+      deptName: "Maintenance",
+      name: "General Maintenance",
       icon: Wrench,
-      description: "Motorized bed elevation controls, IV pole adjustment, overbed table",
-      color: "border-[#4F46E5] hover:bg-[#EEF2FF]/40",
-      accent: "text-[#4F46E5] bg-[#EEF2FF]",
-      defaultItems: ["Motorized Bed Elevation", "Overbed Food Table", "Wheelchair Request", "IV Stand Wheel"],
-    },
-    {
-      id: "nursing_assistance",
-      deptId: "nursing",
-      name: "Nursing Assistance (Non-Emergency)",
-      icon: HeartPulse,
-      description: "Bed adjustment, drinking water, warm blanket, routine comfort support",
-      color: "border-[#DC2626] hover:bg-[#FEF2F2]/40",
-      accent: "text-[#DC2626] bg-[#FEF2F2]",
-      defaultItems: ["Warm Blanket / Water", "Patient Mobility Assistance", "Routine Comfort Query", "Pillow Repositioning"],
-    },
-    {
-      id: "dietary",
-      deptId: "housekeeping",
-      name: "Food & Dietary Services",
-      icon: Utensils,
-      description: "Diet meal inquiry, hot water thermos refill, extra cutlery or napkin",
-      color: "border-[#059669] hover:bg-[#ECFDF5]/40",
-      accent: "text-[#059669] bg-[#ECFDF5]",
-      defaultItems: ["Diet Meal Inquiry", "Hot Water Thermos Refill", "Extra Cutlery / Napkins", "Patient Tea / Soup"],
-    },
-    {
-      id: "other",
-      deptId: "billing",
-      name: "Other Hospital Service Request",
-      icon: HelpCircle,
-      description: "Discharge clarification, interim invoice review, visitor guidelines",
+      description: "Door latch, window blinds, motorized bed frame, room fixtures",
       color: "border-[#475569] hover:bg-[#F8FAFC]/40",
       accent: "text-[#475569] bg-[#F8FAFC]",
-      defaultItems: ["Interim Bill Clarification", "Visitor Pass Query", "Pharmacy Delivery Status", "Other General Request"],
+      defaultItems: ["Door Latch / Lock", "Window Blinds", "Motorized Bed Frame", "Furniture Repair"],
+    },
+    {
+      id: "housekeeping-cleaning",
+      deptId: "housekeeping",
+      deptName: "Housekeeping",
+      name: "Housekeeping & Room Sanitization",
+      icon: Sparkles,
+      description: "Floor mopping, dust clearance, bathroom sanitization, waste clearance",
+      color: "border-[#D97706] hover:bg-[#FFFBEB]/40",
+      accent: "text-[#D97706] bg-[#FFFBEB]",
+      defaultItems: ["Floor Mopping / Spill", "Bathroom Sanitization", "Trash Bin Clearance", "Spill Clean-up"],
+    },
+    {
+      id: "linen-change",
+      deptId: "linen",
+      deptName: "Linen",
+      name: "Linen & Bedding",
+      icon: Sparkles,
+      description: "Fresh bed sheets, extra warm blanket, pillow change, clean patient gown",
+      color: "border-[#7C3AED] hover:bg-[#F5F3FF]/40",
+      accent: "text-[#7C3AED] bg-[#F5F3FF]",
+      defaultItems: ["Fresh Bed Sheets", "Extra Warm Blanket", "Pillow Change", "Clean Patient Gown"],
+    },
+    {
+      id: "medical-support",
+      deptId: "medical",
+      deptName: "Medical",
+      name: "Medical Assistance (Non-Emergency)",
+      icon: HeartPulse,
+      description: "Drinking water, routine nursing query, mobility assistance (non-emergency)",
+      color: "border-[#DC2626] hover:bg-[#FEF2F2]/40",
+      accent: "text-[#DC2626] bg-[#FEF2F2]",
+      defaultItems: ["Bed Reclining Help", "Drinking Water Refill", "Routine Nursing Query", "Mobility Assistance"],
+    },
+    {
+      id: "it-tech",
+      deptId: "it",
+      deptName: "IT",
+      name: "IT & Digital Services",
+      icon: HelpCircle,
+      description: "Patient TV / remote, hospital Wi-Fi connectivity, bedside digital screen",
+      color: "border-[#0284C7] hover:bg-[#F0F9FF]/40",
+      accent: "text-[#0284C7] bg-[#F0F9FF]",
+      defaultItems: ["In-Room TV / Remote", "Patient Wi-Fi Connectivity", "Bedside Screen", "Digital Call Panel"],
     },
   ];
-
-  // Auth Action 1: 1-Click Bedside Guest Session
-  const handleContinueAsGuest = async () => {
-    setIsAuthenticating(true);
-    setAuthError(null);
-    try {
-      const res = await api.createGuestSession(currentToken);
-      setPatientSession({
-        token: res.access_token,
-        type: "guest",
-        identifier: res.patient_identifier || `Room ${roomData?.room_number}`,
-      });
-      setStep("categories");
-    } catch (err: any) {
-      setAuthError(err.message || "Failed to initialize guest session.");
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
-  // Auth Action 2: Verified Mobile Login
-  const handleVerifyMobile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!showOtpField) {
-      if (!phoneInput || phoneInput.length < 8) {
-        setAuthError("Please enter a valid mobile number.");
-        return;
-      }
-      setShowOtpField(true);
-      setAuthError(null);
-      return;
-    }
-
-    setIsAuthenticating(true);
-    setAuthError(null);
-    try {
-      const res = await api.verifyPatientSession({
-        phone: phoneInput,
-        otp_code: otpInput || "123456",
-        qr_token: currentToken,
-      });
-      setPatientSession({
-        token: res.access_token,
-        type: "verified",
-        identifier: phoneInput,
-      });
-      setPatientContact(phoneInput);
-      setStep("categories");
-    } catch (err: any) {
-      setAuthError(err.message || "OTP Verification failed. Please check code.");
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
 
   const handleSelectCategory = (cat: (typeof categories)[0]) => {
     setSelectedDept(cat.deptId);
@@ -574,6 +530,17 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
     e.preventDefault();
     if (isSubmitting) return; // Prevent double-clicks
 
+    const trimmedContact = patientContact.trim();
+    if (!trimmedContact) {
+      alert("Mobile number is required for ticket tracking and WhatsApp status notifications.");
+      return;
+    }
+    const normalizedPhone = normalizeE164(trimmedContact);
+    if (!isValidPhone(normalizedPhone)) {
+      alert("Please enter a valid mobile number (e.g. +1 555-0192 or +91 98450 11223).");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await api.submitPatientTicket({
@@ -584,7 +551,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
         description: description || transcription || `Service request for ${categoryName}`,
         voice_recording_base64: audioBase64 || undefined,
         voice_transcription: transcription || undefined,
-        patient_contact: patientContact || undefined,
+        patient_contact: normalizedPhone,
         photo_base64: photoBase64 || undefined,
         idempotency_key: idempotencyKey,
       });
@@ -691,135 +658,34 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
           </div>
         ) : (
           <>
-            {/* STEP 1: AUTHENTICATION / ACCESS SELECTION */}
-            {step === "auth" && (
-              <div className="space-y-5 animate-in fade-in duration-200">
-                {/* Location Confirmation Banner */}
+            {/* STEP 1: CATEGORY SELECTION (Prefilled Room Location) */}
+            {step === "categories" && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                {/* Verified Room Location Card */}
                 <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-[#176B63] uppercase tracking-wider">
-                      Verified Location
+                    <span className="text-[10px] font-bold text-[#176B63] uppercase tracking-wider">
+                      Verified Room Location
                     </span>
                     <span className="text-[10px] font-mono text-[#176B63] bg-white px-2 py-0.5 rounded-md border border-[#A7D7D1]">
-                      {roomData?.token}
+                      {roomData?.token || currentToken}
                     </span>
                   </div>
-                  <h2 className="text-lg font-black text-[#0F172A]">
-                    {roomData?.room_number} • {roomData?.wing}
+                  <h2 className="text-base font-black text-[#0F172A]">
+                    {roomData ? `${roomData.room_number} • ${roomData.wing}` : "Room 204 • East Wing"}
                   </h2>
-                  <p className="text-xs text-[#475569]">{roomData?.floor} • Metropolitan General Hospital</p>
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-[#0F172A]">Choose How to Enter</h3>
-                  <p className="text-xs text-[#64748B]">
-                    For non-clinical room requests, guest access is fast and requires no passwords.
+                  <p className="text-[11px] text-[#475569]">
+                    {roomData?.floor || "Floor 2"} • Metropolitan General Hospital
                   </p>
                 </div>
 
-                {authError && (
-                  <div className="p-3 bg-[#FEF2F2] border border-[#FCA5A5] rounded-xl text-xs text-[#991B1B]">
-                    {authError}
-                  </div>
-                )}
-
-                {/* Option A: Bedside Guest Access (1-Click) */}
-                <div className="p-5 rounded-3xl bg-white border-2 border-[#CBD5E1] hover:border-[#176B63] shadow-xs transition-all space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black text-[#16805D] bg-[#EDF7F2] px-2 py-0.5 rounded-full uppercase">
-                        Recommended for Patients
-                      </span>
-                      <h4 className="text-sm font-bold text-[#0F172A]">1-Click Bedside Guest Access</h4>
-                      <p className="text-xs text-[#64748B]">
-                        Instantly submit complaints for lighting, cooling, plumbing, or room cleaning.
-                      </p>
-                    </div>
-                    <UserCheck className="h-6 w-6 text-[#176B63] shrink-0" />
-                  </div>
-
-                  <button
-                    onClick={handleContinueAsGuest}
-                    disabled={isAuthenticating}
-                    className="w-full py-3 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-bold shadow-md shadow-[#176B63]/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <span>{isAuthenticating ? "Connecting..." : "Continue as Bedside Guest"}</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </div>
-
-                {/* Option B: Mobile Number Verification */}
-                <div className="p-5 rounded-3xl bg-white border-2 border-[#CBD5E1] shadow-xs space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-bold text-[#0F172A]">Verified Patient Login</h4>
-                      <p className="text-xs text-[#64748B]">
-                        Receive SMS updates and track past hospital complaints across visits.
-                      </p>
-                    </div>
-                    <Phone className="h-6 w-6 text-[#2563EB] shrink-0" />
-                  </div>
-
-                  <form onSubmit={handleVerifyMobile} className="space-y-3 pt-1">
-                    <div>
-                      <label className="text-[11px] font-bold text-[#475569] block mb-1">
-                        Mobile Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        placeholder="e.g. +1 555-0192 or +91 98450 11223"
-                        value={phoneInput}
-                        onChange={(e) => setPhoneInput(e.target.value)}
-                        className="w-full p-2.5 rounded-xl border border-[#CBD5E1] text-xs font-medium focus:outline-none focus:border-[#176B63]"
-                      />
-                    </div>
-
-                    {showOtpField && (
-                      <div className="animate-in fade-in duration-150">
-                        <label className="text-[11px] font-bold text-[#475569] block mb-1">
-                          6-Digit Verification Code (Demo: 123456)
-                        </label>
-                        <input
-                          type="text"
-                          maxLength={6}
-                          placeholder="123456"
-                          value={otpInput}
-                          onChange={(e) => setOtpInput(e.target.value)}
-                          className="w-full p-2.5 rounded-xl border border-[#CBD5E1] text-xs font-mono font-bold tracking-widest focus:outline-none focus:border-[#176B63]"
-                        />
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={isAuthenticating}
-                      className="w-full py-2.5 rounded-xl border-2 border-[#2563EB] text-[#2563EB] hover:bg-[#2563EB] hover:text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      {showOtpField ? "Verify OTP & Continue" : "Send Verification Code"}
-                    </button>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 2: CATEGORY SELECTION */}
-            {step === "categories" && (
-              <div className="space-y-5 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
-                  <div>
-                    <h2 className="text-base sm:text-lg font-black text-[#0F172A]">
-                      How Can We Help You?
-                    </h2>
-                    <p className="text-xs text-[#64748B]">
-                      Select an issue category below. It routes directly to the on-duty staff.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setStep("auth")}
-                    className="text-xs text-[#64748B] hover:text-[#0F172A] font-semibold"
-                  >
-                    Change Login
-                  </button>
+                <div className="pb-1 border-b border-[#E2E8F0]">
+                  <h2 className="text-base font-black text-[#0F172A]">
+                    How Can We Assist You?
+                  </h2>
+                  <p className="text-xs text-[#64748B]">
+                    Select a hospital service category below. It routes directly to the on-duty staff.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -1059,18 +925,26 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                   )}
                 </div>
 
-                {/* Callback Phone (Optional) */}
+                {/* Mobile Phone Number (Required for WhatsApp & Live Tracking) */}
                 <div>
-                  <label className="text-xs font-bold text-[#0F172A] block mb-1">
-                    Callback Phone (Optional for SMS Updates)
+                  <label className="text-xs font-bold text-[#0F172A] flex items-center justify-between mb-1">
+                    <span>Mobile Phone Number *</span>
+                    <span className="text-[10px] text-[#16805D] font-bold">WhatsApp Enabled</span>
                   </label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. +1 555-0192"
-                    value={patientContact}
-                    onChange={(e) => setPatientContact(e.target.value)}
-                    className="w-full p-3 rounded-2xl border-2 border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#176B63]"
-                  />
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      required
+                      placeholder="e.g. +1 555-0192 or +91 98450 11223"
+                      value={patientContact}
+                      onChange={(e) => setPatientContact(e.target.value)}
+                      className="w-full p-3 rounded-2xl border-2 border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#176B63] pl-9"
+                    />
+                    <Phone className="h-4 w-4 text-[#64748B] absolute left-3 top-3.5" />
+                  </div>
+                  <p className="text-[11px] text-[#64748B] mt-1">
+                    Mandatory for live WhatsApp resolution updates and tracking link delivery.
+                  </p>
                 </div>
 
                 {/* Submit Button */}
@@ -1085,7 +959,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
               </form>
             )}
 
-            {/* STEP 4: CONFIRMATION & LIVE TRACKING */}
+            {/* STEP 3: CONFIRMATION & LIVE TRACKING */}
             {step === "confirmation" && submittedTicket && (
               <div className="space-y-6 text-center py-4 animate-in zoom-in-95 duration-200">
                 <div className="h-16 w-16 rounded-full bg-[#EDF7F2] text-[#16805D] flex items-center justify-center mx-auto border-4 border-white shadow-md">
@@ -1099,6 +973,35 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                   <h2 className="text-xl font-black text-[#0F172A]">Request Sent to Care Team</h2>
                   <p className="text-xs text-[#64748B] max-w-sm mx-auto">
                     The {submittedTicket.department} staff has been notified. This screen updates live in real-time.
+                  </p>
+                </div>
+
+                {/* Patient-Safe Confirmation Box */}
+                <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] text-left space-y-2">
+                  <div className="text-[11px] font-bold text-[#176B63] uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Official Confirmation Notice</span>
+                  </div>
+                  <p className="text-xs font-medium text-[#0F172A] leading-relaxed bg-white p-3 rounded-xl border border-[#CBD5E1]">
+                    &ldquo;Your complaint has been registered successfully. Your ticket reference is{" "}
+                    <strong className="font-mono text-[#176B63]">{submittedTicket.ticket_number}</strong>. Track the progress of your request here:{" "}
+                    <a
+                      href={
+                        submittedTicket.tracking_url ||
+                        (typeof window !== "undefined"
+                          ? `${window.location.origin}/track/${submittedTicket.ticket_number}`
+                          : `/track/${submittedTicket.ticket_number}`)
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[#176B63] underline font-bold break-all"
+                    >
+                      {submittedTicket.tracking_url ||
+                        (typeof window !== "undefined"
+                          ? `${window.location.origin}/track/${submittedTicket.ticket_number}`
+                          : `/track/${submittedTicket.ticket_number}`)}
+                    </a>
+                    .&rdquo;
                   </p>
                 </div>
 

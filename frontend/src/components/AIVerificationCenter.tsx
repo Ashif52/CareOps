@@ -65,7 +65,7 @@ export function AIVerificationCenter({
   };
 
   return (
-    <div className="p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -89,7 +89,7 @@ export function AIVerificationCenter({
       </div>
 
       {/* Main Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Left Column: Verification Queue */}
         <div className="lg:col-span-4 bg-white rounded-xl border border-[#E5E9EF] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.02)] flex flex-col max-h-[80vh]">
           <div className="flex items-center justify-between pb-3 border-b border-[#E5E9EF] mb-3">

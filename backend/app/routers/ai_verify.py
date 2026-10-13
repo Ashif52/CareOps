@@ -2,24 +2,37 @@ from datetime import datetime, timezone
 import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.database import get_db
-from app.models import Ticket, Evidence, AIVerificationJob, User, AuditLog
-from app.schemas import AIVerificationJobResponse, AIHumanReviewRequest
-from app.services.auth_service import get_current_user, require_roles
+from app.models import Ticket, Evidence, AIVerificationJob, User, AuditLog, SystemSecuritySetting
+from app.schemas import AIHumanReviewRequest
+from app.services.auth_service import get_current_user, require_roles, require_permission
 from app.services.ai_vision_service import AIVisionService
 
 router = APIRouter(prefix="/ai-verify", tags=["AI Verification Center"])
 
+class AIAnalyzeRequest(BaseModel):
+    provider: Optional[str] = None
+    model_name: Optional[str] = None
+
+class AIModelConfigureRequest(BaseModel):
+    provider: str = Field(..., description="'openai', 'gemini', 'anthropic', or 'mock'")
+    model_name: str
+
 def parse_job_response(job: AIVerificationJob) -> dict:
+    # Try to unpack visual observations and differences if stored in analysis_notes or extra json
     return {
         "id": job.id,
         "ticket_id": job.ticket_id,
         "status": job.status,
         "before_evidence_id": job.before_evidence_id,
         "after_evidence_id": job.after_evidence_id,
+        "provider_selected": getattr(job, "provider_selected", "mock"),
+        "model_name_selected": getattr(job, "model_name_selected", "careops-vision-default"),
+        "is_demo": getattr(job, "is_demo", False),
         "evidence_relevance": job.evidence_relevance,
         "equipment_match": job.equipment_match,
         "visible_fault_assessment": job.visible_fault_assessment,
@@ -38,7 +51,60 @@ def parse_job_response(job: AIVerificationJob) -> dict:
         "human_review_notes": job.human_review_notes,
         "human_override_reason": job.human_override_reason,
         "human_reviewed_at": job.human_reviewed_at,
+        "safety_disclaimer": "AI Visual Verification Disclaimer: Visual inspection cannot reliably verify internal electrical circuitry, pressurized medical gas or plumbing lines, structural anchoring, or chemical sanitization. Always require physical human sign-off or certified functional safety testing where policy mandates.",
         "created_at": job.created_at
+    }
+
+@router.get("/models")
+def get_model_options(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns available AI vision providers, supported models, and active configuration"""
+    sec = db.query(SystemSecuritySetting).filter(SystemSecuritySetting.id == 1).first()
+    active_provider = sec.ai_vision_provider if sec else "mock"
+    active_model = sec.ai_vision_model if sec else "careops-vision-default"
+    
+    # Indicate whether API key is present without exposing the actual secret key
+    has_keys = {
+        "openai": bool(sec and sec.openai_api_key),
+        "gemini": bool(sec and sec.gemini_api_key),
+        "anthropic": bool(sec and sec.anthropic_api_key),
+        "mock": True
+    }
+
+    models_catalog = AIVisionService.get_supported_models()
+    for item in models_catalog:
+        item["is_key_configured"] = has_keys.get(item["provider"], False)
+        item["is_active"] = (item["provider"] == active_provider)
+
+    return {
+        "active_provider": active_provider,
+        "active_model": active_model,
+        "supported_providers": models_catalog
+    }
+
+@router.post("/configure-model")
+def configure_model(
+    payload: AIModelConfigureRequest,
+    current_user: User = Depends(require_roles("admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    """Configures the hospital's active default AI vision provider and model"""
+    sec = db.query(SystemSecuritySetting).filter(SystemSecuritySetting.id == 1).first()
+    if not sec:
+        sec = SystemSecuritySetting(id=1)
+        db.add(sec)
+
+    sec.ai_vision_provider = payload.provider
+    sec.ai_vision_model = payload.model_name
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"AI vision model configured to {payload.provider} ({payload.model_name}).",
+        "active_provider": sec.ai_vision_provider,
+        "active_model": sec.ai_vision_model
     }
 
 @router.get("/queue")
@@ -48,10 +114,17 @@ def get_verification_queue(
     db: Session = Depends(get_db)
 ):
     """Returns queue of verification jobs awaiting supervisor sign-off or action"""
+    if current_user.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Super Admin does not access operational verification queue.")
+
     query = db.query(AIVerificationJob).join(Ticket, AIVerificationJob.ticket_id == Ticket.id)
     
-    if department_id:
-        query = query.filter(Ticket.department_id == department_id)
+    active_dept_id = department_id
+    if current_user.role in ["supervisor", "staff"] and current_user.department_id:
+        active_dept_id = current_user.department_id
+
+    if active_dept_id:
+        query = query.filter(Ticket.department_id == active_dept_id)
         
     jobs = query.order_by(desc(AIVerificationJob.created_at)).limit(50).all()
     
@@ -78,24 +151,57 @@ def get_verification_queue(
 @router.post("/{ticket_id}/analyze")
 def trigger_analysis(
     ticket_id: int,
+    payload: Optional[AIAnalyzeRequest] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Triggers or recalculates AI Multimodal verification job for a ticket"""
+    if current_user.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Super Admin does not execute operational AI verifications.")
+
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Scoping check
+    if current_user.role in ["supervisor", "staff"] and current_user.department_id:
+        if ticket.department_id != current_user.department_id:
+            raise HTTPException(status_code=403, detail="Unauthorized: Ticket belongs to a different department.")
         
     before_ev = db.query(Evidence).filter(Evidence.ticket_id == ticket.id, Evidence.stage == "before").first()
     after_ev = db.query(Evidence).filter(Evidence.ticket_id == ticket.id, Evidence.stage == "after").order_by(Evidence.id.desc()).first()
+
+    # Determine provider & model
+    sec = db.query(SystemSecuritySetting).filter(SystemSecuritySetting.id == 1).first()
+    provider = (payload and payload.provider) or (sec.ai_vision_provider if sec else "mock")
+    model_name = (payload and payload.model_name) or (sec.ai_vision_model if sec else "careops-vision-default")
+
+    api_key = None
+    if sec:
+        if provider == "openai":
+            api_key = sec.openai_api_key
+        elif provider == "gemini":
+            api_key = sec.gemini_api_key
+        elif provider == "anthropic":
+            api_key = sec.anthropic_api_key
     
-    analysis_data = AIVisionService.analyze_ticket_evidence(ticket, before_ev, after_ev)
+    analysis_data = AIVisionService.analyze_ticket_evidence(
+        ticket=ticket,
+        before_evidence=before_ev,
+        after_evidence=after_ev,
+        provider=provider,
+        model_name=model_name,
+        api_key=api_key
+    )
     
     job = AIVerificationJob(
         ticket_id=ticket.id,
         status="completed",
         before_evidence_id=before_ev.id if before_ev else None,
         after_evidence_id=after_ev.id if after_ev else None,
+        provider_selected=analysis_data.get("provider_selected", provider),
+        model_name_selected=analysis_data.get("model_name_selected", model_name),
+        is_demo=analysis_data.get("is_demo", False),
         evidence_relevance=analysis_data["evidence_relevance"],
         equipment_match=analysis_data["equipment_match"],
         visible_fault_assessment=analysis_data["visible_fault_assessment"],
@@ -114,16 +220,27 @@ def trigger_analysis(
     
     audit = AuditLog(
         ticket_id=ticket.id,
-        action="AI_ANALYSIS_MANUALLY_TRIGGERED",
+        action="AI_ANALYSIS_TRIGGERED",
         actor_id=current_user.id,
         actor_name=current_user.name,
         actor_role=current_user.role,
-        details=json.dumps({"ai_recommendation": analysis_data["ai_recommendation"]})
+        details=json.dumps({
+            "provider": provider,
+            "model": model_name,
+            "ai_recommendation": analysis_data["ai_recommendation"],
+            "confidence": analysis_data["confidence_score"]
+        })
     )
     db.add(audit)
     db.commit()
     db.refresh(job)
-    return parse_job_response(job)
+
+    resp = parse_job_response(job)
+    resp["visual_observations"] = analysis_data.get("visual_observations", [])
+    resp["before_after_differences"] = analysis_data.get("before_after_differences", [])
+    resp["recommended_next_action"] = analysis_data.get("recommended_next_action", "")
+    resp["safety_disclaimer"] = analysis_data.get("safety_disclaimer", "")
+    return resp
 
 @router.post("/{job_id}/review")
 def review_verification(
@@ -143,6 +260,11 @@ def review_verification(
     ticket = db.query(Ticket).filter(Ticket.id == job.ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Associated ticket not found")
+
+    # Check department scoping if supervisor
+    if current_user.role == "supervisor" and current_user.department_id:
+        if ticket.department_id != current_user.department_id:
+            raise HTTPException(status_code=403, detail="Unauthorized: Ticket belongs to a different department.")
         
     # Check if this is an override of the AI recommendation
     is_override = (
@@ -162,9 +284,9 @@ def review_verification(
     job.human_override_reason = payload.override_reason
     job.human_reviewed_at = datetime.now(timezone.utc)
     
-    # If supervisor approves, and ticket is ready, advance ticket to closed
+    # If supervisor approves, and ticket is ready, advance ticket to completed/closed
     if payload.decision == "approved":
-        if ticket.status == "resolution_submitted":
+        if ticket.status in ["resolution_submitted", "work_completed"]:
             ticket.status = "closed"
             ticket.closed_at = datetime.now(timezone.utc)
             ticket.is_escalated = False

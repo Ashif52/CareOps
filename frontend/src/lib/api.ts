@@ -558,8 +558,8 @@ export const api = {
     fetchWithAuth("/patient/session/verify", { method: "POST", body: JSON.stringify(data) }),
   submitPatientTicket: (data: any) =>
     fetchWithAuth("/patient/submit", { method: "POST", body: JSON.stringify(data) }),
-  getPatientTicketStatus: (ticketNumber: string) =>
-    fetchWithAuth(`/patient/ticket/${ticketNumber}`),
+  getPatientTicketStatus: (ticketNumber: string, token?: string) =>
+    fetchWithAuth(`/patient/ticket/${encodeURIComponent(ticketNumber)}${token ? `?token=${encodeURIComponent(token)}` : ""}`),
   escalatePatientTicket: (ticketNumber: string, reason?: string) =>
     fetchWithAuth(`/patient/ticket/${encodeURIComponent(ticketNumber)}/escalate`, {
       method: "POST",
@@ -763,5 +763,84 @@ export const api = {
     review_id?: number | null;
     conversation_id?: string | null;
   }) => fetchWithAuth("/reviews/chat", { method: "POST", body: JSON.stringify(data) }),
+
+  // ============================================================================
+  // SUPER ADMIN MANAGEMENT & SYSTEM MAINTENANCE (SECTION 2 & SECTION 4)
+  // ============================================================================
+  getMaintenancePreview: (categories: string[]) =>
+    fetchWithAuth("/system/maintenance/preview", { method: "POST", body: JSON.stringify({ categories }) }),
+  executeMaintenancePurge: (categories: string[], confirmPhrase: string) =>
+    fetchWithAuth("/system/maintenance/purge", { method: "POST", body: JSON.stringify({ categories, confirm_phrase: confirmPhrase }) }),
+  getMaintenanceAuditLogs: () =>
+    fetchWithAuth("/system/maintenance/audit-logs"),
+  getAdminsList: () =>
+    fetchWithAuth("/system/admins"),
+  createAdmin: (data: any) =>
+    fetchWithAuth("/system/admins", { method: "POST", body: JSON.stringify(data) }),
+  updateAdmin: (id: number, data: any) =>
+    fetchWithAuth(`/system/admins/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  activateAdmin: (id: number) =>
+    fetchWithAuth(`/system/admins/${id}/activate`, { method: "POST" }),
+  deactivateAdmin: (id: number) =>
+    fetchWithAuth(`/system/admins/${id}/deactivate`, { method: "POST" }),
+  getAdminPermissions: (id: number) =>
+    fetchWithAuth(`/system/admins/${id}/permissions`),
+  setAdminPermissions: (id: number, permissions: string[]) =>
+    fetchWithAuth(`/system/admins/${id}/permissions`, { method: "PUT", body: JSON.stringify({ permissions }) }),
+  getSecuritySettings: () =>
+    fetchWithAuth("/system/security-settings"),
+  updateSecuritySettings: (data: any) =>
+    fetchWithAuth("/system/security-settings", { method: "PUT", body: JSON.stringify(data) }),
+  getSuperAdminAuditLogs: () =>
+    fetchWithAuth("/system/audit-logs"),
+  getPermissionMatrixCatalog: (isSuperadmin: boolean = false) =>
+    fetchWithAuth(`/system/permissions/catalog?is_superadmin=${isSuperadmin}`),
+
+  // ============================================================================
+  // STAFF, SUPERVISORS & PERMISSIONS MATRIX (SECTION 3 & SECTION 9)
+  // ============================================================================
+  getUserPermissionsMatrix: (userId: number) =>
+    fetchWithAuth(`/staff/${userId}/permissions`),
+  updateUserPermissionsMatrix: (userId: number, permissions: string[]) =>
+    fetchWithAuth(`/staff/${userId}/permissions`, { method: "PUT", body: JSON.stringify({ permissions }) }),
+  getSupervisorsList: () =>
+    fetchWithAuth("/staff/supervisors/list"),
+  getSupervisorTeam: (supervisorId: number) =>
+    fetchWithAuth(`/staff/supervisors/${supervisorId}/team`),
+
+  // ============================================================================
+  // DEPARTMENT PERFORMANCE ANALYTICS (SECTION 13)
+  // ============================================================================
+  getDepartmentAnalytics: (departmentId: string) =>
+    fetchWithAuth(`/departments/${departmentId}/analytics`),
+
+  // ============================================================================
+  // NPS & PATIENT EXPERIENCE (SECTION 8 - SEPARATE FROM GOOGLE REVIEWS)
+  // ============================================================================
+  getNPSDashboard: (departmentId?: string) =>
+    fetchWithAuth(departmentId ? `/nps/dashboard?department_id=${departmentId}` : "/nps/dashboard"),
+  getNPSResponses: (params?: { department_id?: string; emoji_rating?: string; is_critical?: boolean; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") {
+          searchParams.append(k, String(v));
+        }
+      });
+    }
+    const qs = searchParams.toString();
+    return fetchWithAuth(qs ? `/nps/responses?${qs}` : "/nps/responses");
+  },
+  submitNPSFeedback: (data: { ticket_id?: number; tracking_token?: string; emoji_rating: string; nps_score?: number; feedback_comment?: string }) =>
+    fetchWithAuth("/nps/submit", { method: "POST", body: JSON.stringify(data) }),
+
+  // ============================================================================
+  // AI VISION MODELS CONFIGURATION (SECTION 11)
+  // ============================================================================
+  getAIModels: () =>
+    fetchWithAuth("/ai-verify/models"),
+  configureAIModel: (provider: string, modelName: string) =>
+    fetchWithAuth("/ai-verify/configure-model", { method: "POST", body: JSON.stringify({ provider, model_name: modelName }) }),
 };
+
 

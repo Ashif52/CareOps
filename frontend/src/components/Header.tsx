@@ -86,24 +86,24 @@ export function Header({
   ];
 
   return (
-    <header className="h-18 bg-white border-b border-[#E5E9EF] sticky top-0 z-20 flex items-center justify-between px-6 sm:px-8">
+    <header className="h-15 bg-white border-b border-[#E5E9EF] sticky top-0 z-20 flex items-center justify-between px-5 sm:px-6">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-3.5">
-        <span className="text-base sm:text-lg font-black text-[#0F172A] tracking-wide">
+      <div className="flex items-center gap-3">
+        <span className="text-sm sm:text-base font-extrabold text-[#0F172A] tracking-tight">
           {breadcrumbsMap[currentTab] || "Operations Dashboard"}
         </span>
       </div>
 
       {/* Global Actions */}
-      <div className="flex items-center gap-3.5">
+      <div className="flex items-center gap-2.5">
         {/* Search */}
-        <div className="relative hidden lg:block w-72">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-[#475569]" />
+        <div className="relative hidden lg:block w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#475569]" />
           <input
             type="text"
             placeholder="Search tickets, rooms, faults..."
             onChange={(e) => onSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white transition-all placeholder-[#64748B]"
+            className="w-full pl-9 pr-3.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white transition-all placeholder-[#64748B]"
           />
         </div>
 
@@ -111,47 +111,47 @@ export function Header({
         <button
           onClick={onRefreshData}
           disabled={isRefreshing}
-          className="p-2.5 rounded-xl text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
+          className="p-2 rounded-lg text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
           title="Refresh Data"
         >
-          <RefreshCw className={`h-5 w-5 ${isRefreshing ? "animate-spin text-[#176B63]" : ""}`} />
+          <RefreshCw className={`h-4.5 w-4.5 ${isRefreshing ? "animate-spin text-[#176B63]" : ""}`} />
         </button>
 
         {/* Notifications */}
         <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2.5 rounded-xl text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors relative cursor-pointer"
+            className="p-2 rounded-lg text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors relative cursor-pointer"
             title="Notifications"
           >
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-[#DC2626]" />
+            <Bell className="h-4.5 w-4.5" />
+            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#DC2626]" />
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-88 bg-white rounded-2xl shadow-2xl border-2 border-[#CBD5E1] p-4 text-sm z-50">
-              <div className="flex items-center justify-between pb-2.5 border-b-2 border-[#E2E8F0] mb-3 font-black text-[#0F172A]">
+            <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-[#CBD5E1] p-3.5 text-xs z-50">
+              <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0] mb-2.5 font-bold text-[#0F172A]">
                 <span>Operational Alerts</span>
-                <span className="text-xs text-[#176B63] bg-[#E8F3F1] px-2 py-0.5 rounded-md font-black">
+                <span className="text-[10px] text-[#176B63] bg-[#E8F3F1] px-2 py-0.5 rounded font-bold">
                   2 Pending
                 </span>
               </div>
-              <div className="space-y-2.5">
-                <div className="p-3 rounded-xl bg-[#FEF7EC] border-2 border-[#FAD7A0]">
-                  <div className="font-black text-[#B7791F] flex items-center gap-1.5 text-sm">
-                    <AlertTriangle className="h-4 w-4" />
+              <div className="space-y-2">
+                <div className="p-2.5 rounded-lg bg-[#FEF7EC] border border-[#FAD7A0]">
+                  <div className="font-bold text-[#B7791F] flex items-center gap-1.5 text-xs">
+                    <AlertTriangle className="h-3.5 w-3.5" />
                     <span>SLA Resolution Breach</span>
                   </div>
-                  <div className="text-[#334155] text-xs font-semibold mt-1">
+                  <div className="text-[#334155] text-[11px] font-medium mt-1">
                     Ticket TKT-MNT-1002 (Room 205 Faucet) is 35 mins overdue. Supervisor escalated.
                   </div>
                 </div>
-                <div className="p-3 rounded-xl bg-[#EEF4FD] border-2 border-[#BFDBFE]">
-                  <div className="font-black text-[#3868C9] flex items-center gap-1.5 text-sm">
-                    <CheckCircle2 className="h-4 w-4" />
+                <div className="p-2.5 rounded-lg bg-[#EEF4FD] border border-[#BFDBFE]">
+                  <div className="font-bold text-[#3868C9] flex items-center gap-1.5 text-xs">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
                     <span>AI Verification Complete</span>
                   </div>
-                  <div className="text-[#334155] text-xs font-semibold mt-1">
+                  <div className="text-[#334155] text-[11px] font-medium mt-1">
                     TKT-MNT-1001 (Room 204 Fan) ready for supervisor sign-off.
                   </div>
                 </div>
@@ -164,9 +164,9 @@ export function Header({
         <div className="relative">
           <button
             onClick={() => setShowRoleMenu(!showRoleMenu)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border-2 border-[#CBD5E1] bg-white text-sm font-bold text-[#0F172A] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-bold text-[#0F172A] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
           >
-            <UserCheck className="h-4 w-4 text-[#176B63]" />
+            <UserCheck className="h-3.5 w-3.5 text-[#176B63]" />
             <span className="hidden sm:inline">Role:</span>
             <span
               className={`font-black capitalize ${
@@ -178,11 +178,11 @@ export function Header({
           </button>
 
           {showRoleMenu && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border-2 border-[#CBD5E1] p-3 text-sm z-50">
-              <div className="px-2 py-1 text-xs font-black text-[#475569] uppercase tracking-wider">
+            <div className="absolute right-0 mt-2 w-76 bg-white rounded-xl shadow-xl border border-[#CBD5E1] p-2.5 text-xs z-50">
+              <div className="px-2 py-1 text-[10px] font-bold text-[#475569] uppercase tracking-wider">
                 Simulate Role Workspace
               </div>
-              <div className="space-y-1.5 mt-1.5">
+              <div className="space-y-1 mt-1">
                 {demoAccounts.map((acc) => (
                   <button
                     key={acc.email}
@@ -190,32 +190,32 @@ export function Header({
                       onSelectRoleUser(acc.email);
                       setShowRoleMenu(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl transition-colors flex flex-col ${
+                    className={`w-full text-left p-2 rounded-lg transition-colors flex flex-col ${
                       currentUser?.email === acc.email
                         ? "bg-[#E8F3F1] text-[#176B63]"
                         : "hover:bg-[#F1F5F9] text-[#0F172A]"
                     }`}
                   >
-                    <div className="flex items-center justify-between font-black text-sm">
+                    <div className="flex items-center justify-between font-bold text-xs">
                       <span>{acc.name}</span>
-                      <span className="text-xs uppercase font-black text-[#475569]">
+                      <span className="text-[10px] uppercase font-bold text-[#475569]">
                         {acc.role.split(" ")[0]}
                       </span>
                     </div>
-                    <span className="text-xs text-[#475569] font-medium mt-0.5">{acc.desc}</span>
+                    <span className="text-[11px] text-[#475569] font-normal mt-0.5">{acc.desc}</span>
                   </button>
                 ))}
 
-                <div className="pt-2 border-t-2 border-[#E2E8F0] mt-1.5">
+                <div className="pt-1.5 border-t border-[#E2E8F0] mt-1">
                   <button
                     onClick={() => {
                       setShowRoleMenu(false);
                       onLogout();
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-[#FEE2E2] text-[#DC2626] font-black flex items-center justify-between transition-colors cursor-pointer"
+                    className="w-full text-left p-2 rounded-lg hover:bg-[#FEE2E2] text-[#DC2626] font-bold flex items-center justify-between transition-colors cursor-pointer text-xs"
                   >
                     <span>Switch Portal / Log Out</span>
-                    <LogOut className="h-4 w-4" />
+                    <LogOut className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -226,9 +226,9 @@ export function Header({
         {/* Create Ticket Action */}
         <button
           onClick={onOpenCreateModal}
-          className="flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm sm:text-base font-black shadow-md shadow-[#176B63]/25 transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#176B63] hover:bg-[#10574F] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
           <span>New Ticket</span>
         </button>
       </div>

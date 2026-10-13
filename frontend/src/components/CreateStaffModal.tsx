@@ -36,11 +36,21 @@ export function CreateStaffModal({
   const [departmentId, setDepartmentId] = useState("maintenance");
   const [designation, setDesignation] = useState("");
   const [role, setRole] = useState("staff");
+  const [supervisorId, setSupervisorId] = useState<string>("");
+  const [supervisorsList, setSupervisorsList] = useState<any[]>([]);
   const [initialPassword, setInitialPassword] = useState("TempPass2026!");
   const [requirePasswordChange, setRequirePasswordChange] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      api.getSupervisorsList().then((res: any) => {
+        if (Array.isArray(res)) setSupervisorsList(res);
+      }).catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -60,6 +70,11 @@ export function CreateStaffModal({
       return;
     }
 
+    if (role === "supervisor" && !phone.trim()) {
+      setErrorMessage("Mobile number is mandatory for Supervisors (required for WhatsApp dispatch & operational calls).");
+      return;
+    }
+
     if (!email.includes("@")) {
       setErrorMessage("Please enter a valid work email address.");
       return;
@@ -76,6 +91,7 @@ export function CreateStaffModal({
         department_id: departmentId,
         designation: designation.trim(),
         role: role,
+        supervisor_id: supervisorId ? parseInt(supervisorId, 10) : undefined,
         initial_password: initialPassword.trim(),
         require_password_change: requirePasswordChange,
       });
@@ -260,6 +276,25 @@ export function CreateStaffModal({
                   onChange={(e) => setDesignation(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white"
                 />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-[#334155] mb-1">
+                  Assigned Department Supervisor {role === "supervisor" ? "(N/A for Department Leads)" : "(Optional)"}
+                </label>
+                <select
+                  disabled={role === "supervisor"}
+                  value={supervisorId}
+                  onChange={(e) => setSupervisorId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white cursor-pointer disabled:opacity-50"
+                >
+                  <option value="">No supervisor assigned (Direct to Admin)</option>
+                  {supervisorsList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.department_name || s.department_id || "Lead"}) - {s.phone || "No phone"}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

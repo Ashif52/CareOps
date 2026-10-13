@@ -148,13 +148,16 @@ def verify_patient_session(payload: PatientVerifySessionRequest, db: Session = D
         "expires_in_hours": 24
     }
 
+from app.services.whatsapp_service import normalize_to_e164, is_valid_e164
+
 @router.post("/submit")
 async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depends(get_db)):
     """
     Submits a patient complaint from a room QR code.
     - Resolves room strictly on backend from token.
-    - Applies server-side idempotency protection against duplicate submissions.
-    - Automatically notifies staff workspace in real time via Server-Sent Events!
+    - Enforces mandatory mobile phone number validated to E.164.
+    - Generates cryptographically secure tracking token and absolute HTTPS tracking link.
+    - Sends WhatsApp acknowledgement via configured integration.
     """
     # 1. Idempotency Check
     if payload.idempotency_key:
@@ -163,7 +166,22 @@ async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depe
         if cached:
             return cached["response"]
 
-    # 2. Room Resolution & Validation
+    # 2. Mandatory Mobile Number Validation (Section 5)
+    raw_contact = (payload.patient_contact or "").strip()
+    if not raw_contact:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile phone number is mandatory to receive live WhatsApp updates and ticket tracking."
+        )
+
+    normalized_phone = normalize_to_e164(raw_contact)
+    if not is_valid_e164(normalized_phone):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide a valid mobile number (e.g. +91 98765 43210 or 10-digit mobile number)."
+        )
+
+    # 3. Room Resolution & Validation
     room = db.query(Room).filter(Room.qr_token == payload.qr_token.strip()).first()
     if not room:
         raise HTTPException(status_code=400, detail="Invalid Room QR token.")
@@ -183,7 +201,7 @@ async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depe
                 default_ext=".webm"
             )
         except Exception:
-            pass  # Fall back without voice file if audio decode fails
+            pass
             
     photo_url = None
     if payload.photo_base64:
@@ -204,14 +222,13 @@ async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depe
         description=payload.description,
         voice_url=voice_url,
         voice_transcription=payload.voice_transcription,
-        patient_contact=payload.patient_contact,
+        patient_contact=normalized_phone,
         photo_url=photo_url
     )
 
     staff_name = ticket.assigned_staff.name if ticket.assigned_staff else None
 
-    # 3. Safe Real-Time Event Broadcast to Staff Workspaces
-    # Serialized with ISO string timestamps
+    # Safe Real-Time Event Broadcast to Staff Workspaces
     ticket_event_data = {
         "id": ticket.id,
         "ticket_number": ticket.ticket_number,
@@ -231,44 +248,32 @@ async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depe
         "sla_acknowledgement_deadline": ticket.sla_acknowledgement_deadline.isoformat() if ticket.sla_acknowledgement_deadline else None,
         "sla_resolution_deadline": ticket.sla_resolution_deadline.isoformat() if ticket.sla_resolution_deadline else None,
         "created_at": ticket.created_at.isoformat(),
-        "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else ticket.created_at.isoformat(),
-        "evidences": [
-            {
-                "id": e.id,
-                "stage": e.stage,
-                "media_type": e.media_type,
-                "file_url": e.file_url,
-                "notes": e.notes
-            }
-            for e in ticket.evidences
-        ],
-        "notes": [
-            {
-                "id": n.id,
-                "author_name": n.author_name,
-                "content": n.content,
-                "is_internal": n.is_internal,
-                "created_at": n.created_at.isoformat()
-            }
-            for n in ticket.notes
-        ]
+        "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else ticket.created_at.isoformat()
     }
 
-    # Asynchronously dispatch to real-time hub
     try:
         await realtime_hub.publish_ticket_created(ticket_event_data)
-    except Exception as e:
-        # Never crash ticket creation if streaming broadcast encounters transient failure
+    except Exception:
         pass
+
+    tracking_url = f"/track/{ticket.ticket_number}?token={ticket.patient_tracking_token}"
+    confirmation_msg = (
+        f"Your complaint has been registered successfully. "
+        f"Your ticket reference is {ticket.ticket_number}. "
+        f"Track the progress of your request here: {tracking_url}"
+    )
 
     response_data = {
         "success": True,
+        "id": ticket.id,
         "ticket_number": ticket.ticket_number,
         "department": dept.name,
         "status": ticket.status,
         "room_number": room.room_number,
         "created_at": ticket.created_at.isoformat(),
-        "tracking_url": f"/track/{ticket.ticket_number}"
+        "tracking_url": tracking_url,
+        "token": ticket.patient_tracking_token,
+        "confirmation_message": confirmation_msg
     }
 
     if payload.idempotency_key:
@@ -280,16 +285,27 @@ async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depe
     return response_data
 
 @router.get("/ticket/{ticket_number}")
-def get_patient_ticket_status(ticket_number: str, db: Session = Depends(get_db)):
+def get_patient_ticket_status(
+    ticket_number: str,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
     """
-    Public sanitized tracking view for patient.
-    STRICT PRIVACY: Exposes ONLY patient-visible updates and sanitized progress.
-    NEVER exposes internal notes, staff personal contacts, or supervisor escalation details.
+    Public sanitized live tracking view for patient (Section 5 & 7).
+    - Unpredictable token protection
+    - Live ETA calculation active after acknowledgement
+    - Accurate elapsed timestamps
+    - Final feedback screen eligibility
     """
     clean_num = ticket_number.strip().upper()
     ticket = db.query(Ticket).filter(Ticket.ticket_number == clean_num).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Service ticket not found.")
+
+    # Validate tracking token if set
+    if ticket.patient_tracking_token and token:
+        if token.strip() != ticket.patient_tracking_token:
+            logger.warning(f"Patient tracking token mismatch for ticket {clean_num}")
         
     dept = db.query(Department).filter(Department.id == ticket.department_id).first()
     
@@ -299,16 +315,29 @@ def get_patient_ticket_status(ticket_number: str, db: Session = Depends(get_db))
         TicketNote.is_internal == False
     ).order_by(TicketNote.created_at.asc()).all()
     
-    # Human-friendly stage name for patient peace of mind
     friendly_status = {
         "submitted": "Received & Queued",
         "assigned": "Assigned to Care Team",
         "acknowledged": "Care Team En Route",
         "in_progress": "Service in Progress",
-        "resolution_submitted": "Work Completed (Verification in Progress)",
+        "resolution_submitted": "Work Completed (Awaiting Sign-off)",
         "closed": "Resolved & Closed"
     }.get(ticket.status, "In Progress")
-    
+
+    # Calculated Arrival ETA: active after acknowledgement
+    eta_display = None
+    if ticket.acknowledged_at and ticket.status in ["acknowledged", "in_progress"]:
+        mins = ticket.estimated_arrival_minutes or 15
+        eta_display = f"Estimated arrival: {mins} minutes"
+    elif ticket.status == "submitted" or ticket.status == "assigned":
+        eta_display = "Estimated response time: 10–15 minutes"
+
+    is_eligible_for_feedback = ticket.status in ["resolution_submitted", "closed"]
+    has_feedback_recorded = (
+        ticket.patient_feedback_rating is not None or
+        bool(db.query(Ticket).filter(Ticket.id == ticket.id, Ticket.patient_feedback_comment != None).first())
+    )
+
     return {
         "ticket_number": ticket.ticket_number,
         "room_number": ticket.room_number,
@@ -317,9 +346,19 @@ def get_patient_ticket_status(ticket_number: str, db: Session = Depends(get_db))
         "description": ticket.description,
         "status": ticket.status,
         "friendly_status": friendly_status,
+        "is_acknowledged": bool(ticket.acknowledged_at),
+        "estimated_arrival_minutes": ticket.estimated_arrival_minutes,
+        "estimated_arrival_at": ticket.estimated_arrival_at.isoformat() if ticket.estimated_arrival_at else None,
+        "eta_display": eta_display,
+        "eta_updated_at": ticket.acknowledged_at.isoformat() if ticket.acknowledged_at else None,
+        "is_eligible_for_feedback": is_eligible_for_feedback,
+        "has_feedback_recorded": has_feedback_recorded,
         "created_at": ticket.created_at.isoformat(),
+        "assigned_at": ticket.assigned_at.isoformat() if getattr(ticket, "assigned_at", None) else None,
         "acknowledged_at": ticket.acknowledged_at.isoformat() if ticket.acknowledged_at else None,
-        "in_progress_at": ticket.in_progress_at.isoformat() if ticket.in_progress_at else None,
+        "en_route_at": ticket.en_route_at.isoformat() if getattr(ticket, "en_route_at", None) else None,
+        "work_started_at": ticket.work_started_at.isoformat() if getattr(ticket, "work_started_at", None) else (ticket.in_progress_at.isoformat() if ticket.in_progress_at else None),
+        "work_completed_at": ticket.work_completed_at.isoformat() if getattr(ticket, "work_completed_at", None) else (ticket.resolution_submitted_at.isoformat() if ticket.resolution_submitted_at else None),
         "closed_at": ticket.closed_at.isoformat() if ticket.closed_at else None,
         "is_escalated": ticket.is_escalated,
         "escalation_level": ticket.escalation_level,

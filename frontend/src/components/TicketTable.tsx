@@ -202,16 +202,16 @@ export function TicketTable({
   };
 
   return (
-    <div className="p-8 sm:p-10 space-y-8 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-[#0F172A] tracking-tight">
             {isStaff
               ? `${staffDept ? staffDept.charAt(0).toUpperCase() + staffDept.slice(1) : "Department"} Tickets`
               : "Hospital Service Tickets"}
           </h1>
-          <p className="text-sm sm:text-base text-[#475569] mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-[#475569] mt-0.5 font-medium">
             {isStaff
               ? "Operational work orders assigned to your hospital department team"
               : "Centralized register across all medical & operational facilities"}
@@ -219,24 +219,24 @@ export function TicketTable({
         </div>
         <button
           onClick={onOpenCreateModal}
-          className="self-start sm:self-auto px-5 py-2.5 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm font-bold shadow-md shadow-[#176B63]/25 transition-all cursor-pointer"
+          className="self-start sm:self-auto px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer"
         >
           Create New Ticket
         </button>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-white rounded-2xl border-2 border-[#CBD5E1] p-4.5 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5">
+      <div className="bg-white rounded-xl border border-[#CBD5E1] p-3.5 shadow-2xs space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5">
           {/* Search */}
           <div className="relative md:col-span-2">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-[#475569]" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#475569]" />
             <input
               type="text"
               placeholder="Search by ticket #, description, room..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white placeholder-[#64748B]"
+              className="w-full pl-9 pr-3.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white placeholder-[#64748B]"
             />
           </div>
 
@@ -246,7 +246,7 @@ export function TicketTable({
               value={deptFilter}
               onChange={(e) => setDeptFilter(e.target.value)}
               disabled={isStaff}
-              className={`w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] text-sm font-bold focus:outline-none ${
+              className={`w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] text-xs font-bold focus:outline-none ${
                 isStaff
                   ? "bg-[#EEF4FD] text-[#3868C9] border-[#BFDBFE] cursor-not-allowed"
                   : "bg-[#F8FAFC] text-[#0F172A] focus:border-[#176B63]"
@@ -266,7 +266,7 @@ export function TicketTable({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
             >
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted</option>
@@ -283,7 +283,7 @@ export function TicketTable({
             <select
               value={slaFilter}
               onChange={(e) => setSlaFilter(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
             >
               <option value="all">SLA: All Timers</option>
               <option value="overdue">SLA: Overdue Only</option>
@@ -294,30 +294,30 @@ export function TicketTable({
       </div>
 
       {/* Table Container */}
-      <div className="bg-white rounded-3xl border-2 border-[#CBD5E1] shadow-md overflow-hidden">
+      <div className="bg-white rounded-xl border border-[#CBD5E1] shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b-2 border-[#CBD5E1] bg-[#F1F5F9] text-xs sm:text-sm font-black text-[#1E293B] uppercase tracking-wider">
-                <th className="py-4.5 px-4.5">Ticket ID</th>
-                <th className="py-4.5 px-4.5">Issue Summary</th>
-                <th className="py-4.5 px-4.5">Department</th>
-                <th className="py-4.5 px-4.5">Location</th>
-                <th className="py-4.5 px-4.5">Priority</th>
-                <th className="py-4.5 px-4.5">Assigned Staff</th>
-                <th className="py-4.5 px-4.5">Status</th>
-                <th className="py-4.5 px-4.5">SLA Deadline</th>
-                <th className="py-4.5 px-4.5">AI Verification</th>
-                <th className="py-4.5 px-4.5 text-right">Action</th>
+              <tr className="border-b border-[#CBD5E1] bg-[#F1F5F9] text-xs font-bold text-[#1E293B] uppercase tracking-wider">
+                <th className="py-2.5 px-3.5">Ticket ID</th>
+                <th className="py-2.5 px-3.5">Issue Summary</th>
+                <th className="py-2.5 px-3.5">Department</th>
+                <th className="py-2.5 px-3.5">Location</th>
+                <th className="py-2.5 px-3.5">Priority</th>
+                <th className="py-2.5 px-3.5">Assigned Staff</th>
+                <th className="py-2.5 px-3.5">Status</th>
+                <th className="py-2.5 px-3.5">SLA Deadline</th>
+                <th className="py-2.5 px-3.5">AI Verification</th>
+                <th className="py-2.5 px-3.5 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E2E8F0] text-sm sm:text-base text-[#0F172A]">
+            <tbody className="divide-y divide-[#E2E8F0] text-xs sm:text-sm text-[#0F172A]">
               {filteredTickets.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-14 text-center text-[#475569]">
-                    <div className="max-w-sm mx-auto space-y-2">
-                      <p className="font-extrabold text-base text-[#0F172A]">No matching tickets found</p>
-                      <p className="text-sm">Adjust your search filters or create a new service ticket.</p>
+                  <td colSpan={10} className="py-10 text-center text-[#475569]">
+                    <div className="max-w-sm mx-auto space-y-1.5">
+                      <p className="font-extrabold text-sm text-[#0F172A]">No matching tickets found</p>
+                      <p className="text-xs">Adjust your search filters or create a new service ticket.</p>
                     </div>
                   </td>
                 </tr>
@@ -329,71 +329,71 @@ export function TicketTable({
                     className="hover:bg-[#F8FAFC] cursor-pointer transition-colors"
                   >
                     {/* Ticket ID */}
-                    <td className="py-4.5 px-4.5 font-black text-[#176B63] tabular-nums whitespace-nowrap">
+                    <td className="py-2.5 px-3.5 font-bold text-[#176B63] tabular-nums whitespace-nowrap text-xs">
                       {ticket.ticket_number}
                     </td>
 
                     {/* Summary */}
-                    <td className="py-4.5 px-4.5 max-w-xs">
-                      <div className="font-bold text-[#0F172A] text-sm sm:text-base truncate">{ticket.title}</div>
-                      <div className="text-xs sm:text-sm text-[#475569] font-medium truncate">{ticket.description}</div>
+                    <td className="py-2.5 px-3.5 max-w-xs">
+                      <div className="font-bold text-[#0F172A] text-xs sm:text-sm truncate">{ticket.title}</div>
+                      <div className="text-[11px] text-[#475569] font-normal truncate">{ticket.description}</div>
                     </td>
 
                     {/* Department */}
-                    <td className="py-4.5 px-4.5 whitespace-nowrap">
-                      <span className="capitalize font-bold text-[#0F172A]">
+                    <td className="py-2.5 px-3.5 whitespace-nowrap">
+                      <span className="capitalize font-semibold text-[#0F172A] text-xs">
                         {ticket.department_id}
                       </span>
                     </td>
 
                     {/* Location */}
-                    <td className="py-4.5 px-4.5 font-bold whitespace-nowrap text-[#0F172A]">
+                    <td className="py-2.5 px-3.5 font-semibold whitespace-nowrap text-[#0F172A] text-xs">
                       {ticket.room_number}
                     </td>
 
                     {/* Priority */}
-                    <td className="py-4.5 px-4.5 whitespace-nowrap">
+                    <td className="py-2.5 px-3.5 whitespace-nowrap">
                       {getPriorityBadge(ticket.priority)}
                     </td>
 
                     {/* Assigned Staff */}
-                    <td className="py-4.5 px-4.5 whitespace-nowrap font-medium text-[#334155]">
+                    <td className="py-2.5 px-3.5 whitespace-nowrap font-medium text-[#334155] text-xs">
                       {ticket.assigned_staff_name ? (
-                        <div className="flex items-center gap-2 text-[#0F172A]">
-                          <User className="h-4 w-4 text-[#176B63]" />
-                          <span className="font-bold">{ticket.assigned_staff_name}</span>
+                        <div className="flex items-center gap-1.5 text-[#0F172A]">
+                          <User className="h-3.5 w-3.5 text-[#176B63]" />
+                          <span className="font-semibold">{ticket.assigned_staff_name}</span>
                         </div>
                       ) : (
-                        <span className="text-[#94A3B8] italic font-semibold">Unassigned</span>
+                        <span className="text-[#94A3B8] italic font-normal">Unassigned</span>
                       )}
                     </td>
 
                     {/* Status */}
-                    <td className="py-4.5 px-4.5 whitespace-nowrap">
+                    <td className="py-2.5 px-3.5 whitespace-nowrap">
                       {getStatusBadge(ticket.status, ticket.is_escalated)}
                     </td>
 
                     {/* SLA Time */}
-                    <td className="py-4.5 px-4.5 whitespace-nowrap">
+                    <td className="py-2.5 px-3.5 whitespace-nowrap">
                       {renderSLATimeRemaining(ticket)}
                     </td>
 
                     {/* AI Verification */}
-                    <td className="py-4.5 px-4.5 whitespace-nowrap">
+                    <td className="py-2.5 px-3.5 whitespace-nowrap">
                       {getAIStateBadge(ticket)}
                     </td>
 
                     {/* Action */}
-                    <td className="py-4.5 px-4.5 text-right whitespace-nowrap">
+                    <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onSelectTicket(ticket.id);
                         }}
-                        className="p-1.5 rounded-xl hover:bg-[#E2E8F0] text-[#334155] hover:text-[#0F172A] cursor-pointer"
+                        className="p-1 rounded-lg hover:bg-[#E2E8F0] text-[#334155] hover:text-[#0F172A] cursor-pointer"
                         title="View Ticket Details"
                       >
-                        <ChevronRight className="h-5 w-5" />
+                        <ChevronRight className="h-4 w-4" />
                       </button>
                     </td>
                   </tr>

@@ -172,16 +172,16 @@ export function ReviewsModuleView({ currentUser }: ReviewsModuleViewProps) {
   };
 
   return (
-    <div className="p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Top Section Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-bold shadow-xs">
+            <div className="h-8.5 w-8.5 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-bold shadow-2xs text-sm">
               G
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 <span>Reputation & Patient Experience</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
                   Google AI Core

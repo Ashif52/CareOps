@@ -162,7 +162,7 @@ export function ReviewDetailModal({
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
                   ID: #{review.id}
                 </span>
-                {review.is_below_threshold && (
+                {review.star_rating < 3 && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
                     <ShieldAlert className="h-3 w-3" />
                     Critical Alert (&lt; 3★)
@@ -428,17 +428,6 @@ export function ReviewDetailModal({
                   <span>{copiedDraft ? "Copied" : "Copy Reply"}</span>
                 </button>
               </div>
-
-              {isSuperadminOrAdmin && (
-                <button
-                  onClick={handleApproveDraft}
-                  disabled={isApprovingDraft || !replyDraft.trim()}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>{isApprovingDraft ? "Approving..." : "Approve Draft Reply"}</span>
-                </button>
-              )}
             </div>
           </div>
 

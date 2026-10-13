@@ -18,6 +18,11 @@ import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
 import { StaffAccessManagementView } from "@/components/StaffAccessManagementView";
 import { AnalyticsReportsView } from "@/components/AnalyticsReportsView";
 import { ReviewsModuleView } from "@/components/reviews/ReviewsModuleView";
+import { AdminManagementView } from "@/components/superadmin/AdminManagementView";
+import { SystemSecurityView } from "@/components/superadmin/SystemSecurityView";
+import { SuperAdminAuditView } from "@/components/superadmin/SuperAdminAuditView";
+import { DatabaseMaintenanceView } from "@/components/superadmin/DatabaseMaintenanceView";
+import { NPSModuleView } from "@/components/nps/NPSModuleView";
 import { QrCode, Bell, Sparkles, Lock, Trash2, CheckCircle2 } from "lucide-react";
 
 import {
@@ -123,7 +128,9 @@ export default function CareOpsApp() {
           const me = await api.getMe();
           setCurrentUser(me);
           setAppMode("authenticated");
-          if (me.role === "staff") {
+          if (me.role === "superadmin") {
+            setCurrentTab("superadmin-admins");
+          } else if (me.role === "staff") {
             setCurrentTab("my-department");
           }
         } catch (_) {
@@ -289,10 +296,18 @@ export default function CareOpsApp() {
       });
       setStoredToken(loginRes.access_token);
       setCurrentUser(loginRes.user);
-      if (loginRes.user.role === "staff") {
+      if (loginRes.user.role === "superadmin") {
+        setCurrentTab("superadmin-admins");
+      } else if (loginRes.user.role === "staff") {
         setCurrentTab("my-department");
-      } else if ((loginRes.user.role === "admin" || loginRes.user.role === "superadmin") && currentTab === "my-department") {
-        setCurrentTab("overview");
+      } else if (loginRes.user.role === "admin") {
+        if (currentTab.startsWith("superadmin-") || currentTab === "my-department") {
+          setCurrentTab("overview");
+        }
+      } else if (loginRes.user.role === "supervisor") {
+        if (currentTab.startsWith("superadmin-")) {
+          setCurrentTab("my-department");
+        }
       }
       loadAllData();
     } catch (err) {
@@ -304,13 +319,18 @@ export default function CareOpsApp() {
   useEffect(() => {
     if (!currentUser) return;
     const role = currentUser.role || "admin";
-    const staffAllowed = ["my-department", "tickets"];
-    const supervisorAllowed = ["my-department", "tickets", "ai-verify", "sla", "departments", "analytics"];
+    const staffAllowed = ["my-department", "tickets", "reviews"];
+    const supervisorAllowed = ["my-department", "tickets", "ai-verify", "sla", "departments", "analytics", "nps", "reviews"];
+    const superAdminAllowed = ["superadmin-admins", "superadmin-security", "superadmin-audit", "superadmin-maintenance"];
 
-    if (role === "staff" && !staffAllowed.includes(currentTab)) {
+    if (role === "superadmin" && !superAdminAllowed.includes(currentTab)) {
+      setCurrentTab("superadmin-admins");
+    } else if (role === "staff" && !staffAllowed.includes(currentTab)) {
       setCurrentTab("my-department");
     } else if (role === "supervisor" && !supervisorAllowed.includes(currentTab)) {
       setCurrentTab("my-department");
+    } else if (role === "admin" && superAdminAllowed.includes(currentTab)) {
+      setCurrentTab("overview");
     }
   }, [currentUser, currentTab]);
 
@@ -540,7 +560,7 @@ export default function CareOpsApp() {
       {/* Main Content Pane */}
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
-          sidebarCollapsed ? "ml-20" : "ml-68"
+          sidebarCollapsed ? "ml-18" : "ml-64"
         }`}
       >
         <Header
@@ -607,6 +627,17 @@ export default function CareOpsApp() {
         )}
 
         <main className="flex-1 pb-16">
+          {/* SUPER ADMIN DEDICATED VIEWS (Strictly isolated from operational screens) */}
+          {currentTab === "superadmin-admins" && <AdminManagementView />}
+          {currentTab === "superadmin-security" && <SystemSecurityView />}
+          {currentTab === "superadmin-audit" && <SuperAdminAuditView />}
+          {currentTab === "superadmin-maintenance" && (
+            <DatabaseMaintenanceView onPurgeSuccess={loadAllData} />
+          )}
+
+          {/* DEDICATED NPS MODULE (Separated from Google Reviews) */}
+          {currentTab === "nps" && <NPSModuleView currentUser={currentUser} />}
+
           {currentTab === "overview" && (
             <OverviewDashboard
               metrics={metrics}
@@ -724,108 +755,25 @@ export default function CareOpsApp() {
 
               {/* Superadmin Database Controls vs Locked Security Notice */}
               {currentUser?.role === "superadmin" ? (
-                <div className="bg-white p-6 rounded-2xl border-2 border-[#DC2626] shadow-sm space-y-4">
+                <div className="bg-white p-6 rounded-2xl border-2 border-[#176B63] shadow-sm space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-[#FEE2E2] text-[#DC2626]">
-                        <Trash2 className="h-5 w-5" />
+                      <div className="p-2.5 rounded-xl bg-[#E8F3F1] text-[#176B63]">
+                        <CheckCircle2 className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-sm text-[#DC2626] flex items-center gap-2">
-                          <span>Superadmin Danger Zone: Clear Database</span>
-                          <span className="px-2 py-0.5 rounded-md bg-[#DC2626] text-white text-[10px] font-black uppercase">
-                            Root Access Granted
-                          </span>
-                        </h3>
+                        <h3 className="font-bold text-sm text-[#0F172A]">Superadmin Database Maintenance Suite</h3>
                         <p className="text-xs text-[#64748B]">
-                          Permanently clear operational tickets, photos, voice notes, and verification logs.
+                          Access selective category clearing, impact preview, and durable audit logs.
                         </p>
                       </div>
                     </div>
-                  </div>
-
-                  {clearDbMessage && (
-                    <div className="p-3 rounded-xl bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-xs font-bold flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
-                      <span>{clearDbMessage}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-3 pt-2 border-t border-[#F1F5F9] text-xs">
-                    <div>
-                      <label className="font-bold text-[#17212F] block mb-1.5">Purge Mode</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label
-                          className={`p-3.5 rounded-xl border-2 flex flex-col gap-1 cursor-pointer transition-all ${
-                            clearMode === "purge_operational"
-                              ? "border-[#DC2626] bg-[#FEF2F2]"
-                              : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 font-bold text-[#0F172A]">
-                            <input
-                              type="radio"
-                              name="clearMode"
-                              value="purge_operational"
-                              checked={clearMode === "purge_operational"}
-                              onChange={() => setClearMode("purge_operational")}
-                            />
-                            <span>Purge Operational Records (Recommended)</span>
-                          </div>
-                          <span className="text-[11px] text-[#64748B] pl-5">
-                            Wipes all Tickets, Evidence & Notes (0 tickets). Leaves Rooms, Staff & Departments intact for clean production use.
-                          </span>
-                        </label>
-
-                        <label
-                          className={`p-3.5 rounded-xl border-2 flex flex-col gap-1 cursor-pointer transition-all ${
-                            clearMode === "reset_all"
-                              ? "border-[#DC2626] bg-[#FEF2F2]"
-                              : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 font-bold text-[#0F172A]">
-                            <input
-                              type="radio"
-                              name="clearMode"
-                              value="reset_all"
-                              checked={clearMode === "reset_all"}
-                              onChange={() => setClearMode("reset_all")}
-                            />
-                            <span>Reset to Fresh Factory Demo Seed</span>
-                          </div>
-                          <span className="text-[11px] text-[#64748B] pl-5">
-                            Wipes existing tickets and re-seeds clean sample demonstration tickets across nursing, maintenance, etc.
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] text-[#92400E] text-xs">
-                      <strong>Safety Protection:</strong> Type <code className="bg-white/80 px-1.5 py-0.5 rounded font-bold border border-[#FCD34D]">CONFIRM_CLEAR</code> in the box below to unlock the purge button.
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                      <input
-                        type="text"
-                        placeholder="Type CONFIRM_CLEAR"
-                        value={clearConfirmText}
-                        onChange={(e) => setClearConfirmText(e.target.value)}
-                        className="flex-1 p-2.5 rounded-xl border-2 border-[#CBD5E1] font-mono text-xs focus:outline-none focus:border-[#DC2626]"
-                      />
-                      <button
-                        disabled={clearConfirmText.trim() !== "CONFIRM_CLEAR" || isClearingDb}
-                        onClick={handleClearDatabase}
-                        className={`px-5 py-2.5 rounded-xl font-black text-xs text-white transition-all shadow-sm flex items-center justify-center gap-2 ${
-                          clearConfirmText.trim() === "CONFIRM_CLEAR" && !isClearingDb
-                            ? "bg-[#DC2626] hover:bg-[#B91C1C] cursor-pointer shadow-red-200"
-                            : "bg-[#CBD5E1] cursor-not-allowed opacity-60"
-                        }`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span>{isClearingDb ? "Purging Database..." : "Execute Database Purge"}</span>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setCurrentTab("superadmin-maintenance")}
+                      className="px-4 py-2 bg-[#176B63] text-white rounded-xl text-xs font-bold hover:bg-[#10574F] transition-all cursor-pointer"
+                    >
+                      Open Database Maintenance
+                    </button>
                   </div>
                 </div>
               ) : (

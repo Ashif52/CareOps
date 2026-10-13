@@ -120,7 +120,7 @@ export function PortalLoginGateway({
       });
 
       setStoredToken(res.access_token);
-      const landingTab = res.user.role === "staff" ? "my-department" : "overview";
+      const landingTab = res.user.role === "superadmin" ? "superadmin-admins" : res.user.role === "staff" ? "my-department" : "overview";
       onLoginSuccess(res.user, landingTab);
     } catch (err: any) {
       setErrorMsg(err.message || "Invalid credentials. Please verify your email and password.");
@@ -160,7 +160,7 @@ export function PortalLoginGateway({
       });
 
       setStoredToken(res.access_token);
-      const landingTab = res.user.role === "staff" ? "my-department" : "overview";
+      const landingTab = res.user.role === "superadmin" ? "superadmin-admins" : res.user.role === "staff" ? "my-department" : "overview";
       onLoginSuccess(res.user, landingTab);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to create account. Email may already be registered.");
@@ -170,71 +170,71 @@ export function PortalLoginGateway({
   };
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9] flex flex-col justify-between p-6 sm:p-10 lg:p-12 relative selection:bg-[#176B63] selection:text-white">
+    <div className="min-h-screen bg-[#F1F5F9] flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative selection:bg-[#176B63] selection:text-white">
       {/* Decorative top header bar */}
-      <header className="max-w-6xl w-full mx-auto flex items-center justify-between pb-8 border-b border-[#CBD5E1]">
-        <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-2xl bg-[#176B63] flex items-center justify-center text-white shadow-lg shadow-[#176B63]/25">
-            <ShieldCheck className="h-7 w-7" />
+      <header className="max-w-6xl w-full mx-auto flex items-center justify-between pb-5 border-b border-[#CBD5E1]">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-[#176B63] flex items-center justify-center text-white shadow-md shadow-[#176B63]/25">
+            <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <div className="font-extrabold text-2xl text-[#0F172A] tracking-tight flex items-center gap-2.5">
+            <div className="font-extrabold text-xl text-[#0F172A] tracking-tight flex items-center gap-2">
               <span>CareOps <strong className="text-[#176B63]">AI</strong></span>
-              <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#E8F3F1] text-[#176B63] border border-[#A7D7D1]">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E8F3F1] text-[#176B63] border border-[#A7D7D1]">
                 Hospital OS
               </span>
             </div>
-            <p className="text-sm text-[#64748B] mt-0.5 font-medium">
+            <p className="text-xs text-[#64748B] mt-0.5 font-medium">
               “Every hospital issue. Accountable ownership. Verified resolution.”
             </p>
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2.5 text-sm font-semibold text-[#0F766E] bg-[#E8F3F1] px-4 py-2 rounded-full border border-[#99F6E4] shadow-xs">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#0D9488] animate-pulse" />
+        <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-[#0F766E] bg-[#E8F3F1] px-3 py-1.5 rounded-full border border-[#99F6E4] shadow-2xs">
+          <span className="h-2 w-2 rounded-full bg-[#0D9488] animate-pulse" />
           <span>NABH / HIPAA Protected Portal</span>
         </div>
       </header>
 
       {/* Main Login Card Section */}
-      <main className="max-w-6xl w-full mx-auto my-auto py-10 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+      <main className="max-w-6xl w-full mx-auto my-auto py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
         {/* Left Column: Brand & Security Overview */}
-        <div className="lg:col-span-6 space-y-7">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#176B63]/10 text-[#176B63] text-sm font-bold border border-[#176B63]/25">
-            <KeyRound className="h-4 w-4" />
+        <div className="lg:col-span-6 space-y-4">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#176B63]/10 text-[#176B63] text-xs font-bold border border-[#176B63]/25">
+            <KeyRound className="h-3.5 w-3.5" />
             <span>Personnel Authentication System</span>
           </div>
 
-          <div className="space-y-4">
-            <h1 className="text-4xl sm:text-5xl font-black text-[#0F172A] tracking-tight leading-tight">
+          <div className="space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight leading-tight">
               Sign in to <span className="text-[#176B63]">CareOps</span> Operations Portal
             </h1>
-            <p className="text-base sm:text-lg text-[#475569] leading-relaxed">
+            <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
               Unified hospital service management, AI visual maintenance verification, patient bedside triage, and strict role-based governance.
             </p>
           </div>
 
           {/* Feature Highlights */}
-          <div className="space-y-4 pt-2">
-            <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/80 border border-[#CBD5E1] shadow-xs">
-              <div className="p-2.5 rounded-xl bg-[#E8F3F1] text-[#176B63] shrink-0 mt-0.5">
-                <ShieldCheck className="h-5 w-5" />
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-white/80 border border-[#CBD5E1] shadow-2xs">
+              <div className="p-2 rounded-lg bg-[#E8F3F1] text-[#176B63] shrink-0 mt-0.5">
+                <ShieldCheck className="h-4 w-4" />
               </div>
-              <div className="space-y-1">
-                <strong className="text-[#0F172A] block text-base font-bold">Strict Role-Based Access Control (RBAC)</strong>
-                <span className="text-sm text-[#64748B] leading-normal block">
+              <div className="space-y-0.5">
+                <strong className="text-[#0F172A] block text-xs font-bold">Strict Role-Based Access Control (RBAC)</strong>
+                <span className="text-[11px] text-[#64748B] leading-normal block">
                   Only authorized Administrators can create bedside QR codes, configure SLA policies, and manage facility departments.
                 </span>
               </div>
             </div>
 
-            <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/80 border border-[#CBD5E1] shadow-xs">
-              <div className="p-2.5 rounded-xl bg-[#EEF4FD] text-[#3868C9] shrink-0 mt-0.5">
-                <Sparkles className="h-5 w-5" />
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-white/80 border border-[#CBD5E1] shadow-2xs">
+              <div className="p-2 rounded-lg bg-[#EEF4FD] text-[#3868C9] shrink-0 mt-0.5">
+                <Sparkles className="h-4 w-4" />
               </div>
-              <div className="space-y-1">
-                <strong className="text-[#0F172A] block text-base font-bold">AI Multimodal Verification</strong>
-                <span className="text-sm text-[#64748B] leading-normal block">
+              <div className="space-y-0.5">
+                <strong className="text-[#0F172A] block text-xs font-bold">AI Multimodal Verification</strong>
+                <span className="text-[11px] text-[#64748B] leading-normal block">
                   Computer vision motion heuristics verify repair evidence before supervisor sign-off.
                 </span>
               </div>
@@ -244,7 +244,7 @@ export function PortalLoginGateway({
 
         {/* Right Column: Clean, Generously Sized Login Form */}
         <div className="lg:col-span-6">
-          <div className="bg-white rounded-3xl border border-[#CBD5E1] p-8 sm:p-10 shadow-2xl shadow-[#0F172A]/8 space-y-6">
+          <div className="bg-white rounded-2xl border border-[#CBD5E1] p-5 sm:p-6 shadow-xl shadow-[#0F172A]/5 space-y-4">
             {/* Mode Switcher Tabs */}
             <div className="flex items-center p-1 bg-[#F1F5F9] rounded-2xl border border-[#CBD5E1]">
               <button
@@ -334,12 +334,12 @@ export function PortalLoginGateway({
 
             {authMode === "signin" ? (
               /* Sign In Form */
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <form onSubmit={handleLoginSubmit} className="space-y-3.5">
                 {/* Email Input */}
-                <div className="space-y-1.5">
-                  <label className="font-bold text-sm text-[#1E293B] block">Hospital Email Address</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-xs text-[#1E293B] block">Hospital Email Address</label>
                   <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8]" />
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
                     <input
                       type="email"
                       required
@@ -349,19 +349,19 @@ export function PortalLoginGateway({
                         setEmail(e.target.value);
                         setErrorMsg(null);
                       }}
-                      className="w-full pl-12 pr-4 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                      className="w-full pl-10 pr-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
                     />
                   </div>
                 </div>
 
                 {/* Password Input */}
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="font-bold text-sm text-[#1E293B]">Password</label>
-                    <span className="text-xs text-[#64748B]">Default Seed: <code className="text-[#176B63] font-mono font-bold">password123</code></span>
+                    <label className="font-bold text-xs text-[#1E293B]">Password</label>
+                    <span className="text-[11px] text-[#64748B]">Default: <code className="text-[#176B63] font-mono font-bold">password123</code></span>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8]" />
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
                     <input
                       type={showPassword ? "text" : "password"}
                       required
@@ -371,14 +371,14 @@ export function PortalLoginGateway({
                         setPassword(e.target.value);
                         setErrorMsg(null);
                       }}
-                      className="w-full pl-12 pr-12 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                      className="w-full pl-10 pr-10 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1.5 rounded-lg transition-colors cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1 rounded transition-colors cursor-pointer"
                     >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -387,41 +387,41 @@ export function PortalLoginGateway({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 rounded-2xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-extrabold text-base shadow-lg shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   <span>{isLoading ? "Verifying Credentials..." : "Sign In to Workspace"}</span>
-                  <ArrowRight className="h-5 w-5" />
+                  <ArrowRight className="h-4 w-4" />
                 </button>
               </form>
             ) : (
               /* Register Form */
-              <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="font-bold text-sm text-[#1E293B] block">Full Name</label>
+              <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+                <div className="space-y-1">
+                  <label className="font-bold text-xs text-[#1E293B] block">Full Name</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Ashif Basha"
                     value={regName}
                     onChange={(e) => setRegName(e.target.value)}
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="font-bold text-sm text-[#1E293B] block">Hospital Email Address</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-xs text-[#1E293B] block">Hospital Email Address</label>
                   <input
                     type="email"
                     required
                     placeholder="e.g. bashajafer36@gmail.com"
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="font-bold text-sm text-[#1E293B] block">Create Password</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-xs text-[#1E293B] block">Create Password</label>
                   <div className="relative">
                     <input
                       type={showRegPassword ? "text" : "password"}
@@ -429,25 +429,25 @@ export function PortalLoginGateway({
                       placeholder="••••••••"
                       value={regPassword}
                       onChange={(e) => setRegPassword(e.target.value)}
-                      className="w-full px-4 pr-12 py-3 rounded-2xl border-2 border-[#CBD5E1] text-base bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-4 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                      className="w-full px-3.5 pr-10 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1.5 rounded-lg transition-colors cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1 rounded transition-colors cursor-pointer"
                     >
-                      {showRegPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      {showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="font-bold text-xs text-[#334155] block mb-1">Access Role</label>
+                    <label className="font-bold text-[11px] text-[#334155] block mb-1">Access Role</label>
                     <select
                       value={regRole}
                       onChange={(e) => setRegRole(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
                     >
                       <option value="admin">Administrator (Full Access)</option>
                       <option value="supervisor">Operations Supervisor</option>
@@ -458,11 +458,11 @@ export function PortalLoginGateway({
                   </div>
 
                   <div>
-                    <label className="font-bold text-xs text-[#334155] block mb-1">Department</label>
+                    <label className="font-bold text-[11px] text-[#334155] block mb-1">Department</label>
                     <select
                       value={regDepartment}
                       onChange={(e) => setRegDepartment(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
                     >
                       <option value="maintenance">Facilities & Maintenance</option>
                       <option value="nursing">Nursing & Clinical Inpatient</option>
@@ -476,24 +476,24 @@ export function PortalLoginGateway({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 rounded-2xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-extrabold text-base shadow-lg shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
-                  <UserPlus className="h-5 w-5" />
+                  <UserPlus className="h-4 w-4" />
                   <span>{isLoading ? "Creating Account..." : "Create Account & Sign In"}</span>
                 </button>
               </form>
             )}
 
             {/* Quick Demo Pre-Fill Selector */}
-            <div className="pt-5 border-t border-[#E2E8F0] space-y-3">
+            <div className="pt-4 border-t border-[#E2E8F0] space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold text-[#475569] uppercase tracking-wider">
+                <span className="text-[11px] font-extrabold text-[#475569] uppercase tracking-wider">
                   Test Credentials (Click to Pre-fill):
                 </span>
-                <span className="text-xs font-semibold text-[#176B63]">1-Click Autofill</span>
+                <span className="text-[11px] font-semibold text-[#176B63]">1-Click Autofill</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {demoPersonas.map((p) => {
                   const isSelected = email.toLowerCase() === p.email.toLowerCase() && authMode === "signin";
                   return (
@@ -504,21 +504,21 @@ export function PortalLoginGateway({
                         setAuthMode("signin");
                         handleSelectPersona(p);
                       }}
-                      className={`text-left p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between gap-1.5 cursor-pointer ${
+                      className={`text-left p-2.5 rounded-xl border transition-all flex flex-col justify-between gap-1 cursor-pointer ${
                         isSelected
                           ? "border-[#176B63] bg-[#E8F3F1] ring-2 ring-[#176B63]/30"
                           : "border-[#E2E8F0] hover:border-[#94A3B8] hover:bg-[#F8FAFC]"
                       }`}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <strong className="text-[#0F172A] font-bold text-sm truncate">
+                        <strong className="text-[#0F172A] font-bold text-xs truncate">
                           {p.name}
                         </strong>
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${p.badgeColor}`}>
+                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${p.badgeColor}`}>
                           {p.badge}
                         </span>
                       </div>
-                      <span className="text-xs text-[#64748B] font-mono truncate">
+                      <span className="text-[11px] text-[#64748B] font-mono truncate">
                         {p.email}
                       </span>
                     </button>
@@ -526,8 +526,8 @@ export function PortalLoginGateway({
                 })}
               </div>
 
-              <div className="p-3 rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#475569] flex items-center gap-2.5">
-                <ShieldAlert className="h-4 w-4 text-[#0D9488] shrink-0" />
+              <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] text-[#475569] flex items-center gap-2">
+                <ShieldAlert className="h-3.5 w-3.5 text-[#0D9488] shrink-0" />
                 <span>
                   <strong>Admin Clearance Notice:</strong> Only <code>Dr. Alistair Vance (Admin)</code> or accounts created with <code>Administrator</code> role can register rooms and generate bedside QR codes.
                 </span>

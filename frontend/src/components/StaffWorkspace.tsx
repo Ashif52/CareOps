@@ -102,30 +102,30 @@ export function StaffWorkspace({
   };
 
   return (
-    <div className="p-8 sm:p-10 space-y-8 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Workspace Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-[#176B63] text-white shadow-md shadow-[#176B63]/20">
-              <Briefcase className="h-6 w-6" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-[#176B63] text-white shadow-sm">
+              <Briefcase className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-[#0F172A] tracking-tight">
               Staff Operational Workspace
             </h1>
           </div>
-          <p className="text-sm sm:text-base text-[#475569] mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-[#475569] mt-0.5 font-medium">
             Logged in as <strong className="text-[#0F172A]">{currentUser?.name}</strong> (
             <span className="capitalize">{currentUser?.role}</span> • {currentUser?.department_id || "All Facilities"})
           </p>
         </div>
 
         {/* Live SSE Status Badge */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-xs font-black shadow-xs">
-            <span className="relative flex h-2.5 w-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-[11px] font-bold shadow-xs">
+            <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#16805D] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#16805D]"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#16805D]"></span>
             </span>
             <span>Real-Time SSE Connected</span>
           </div>
@@ -134,23 +134,23 @@ export function StaffWorkspace({
 
       {/* Unacknowledged Complaint Alert Banner */}
       {myTickets.some((t) => t.status === "assigned" || t.status === "submitted") && (
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-[#FEF2F2] to-[#FFF1F2] border-2 border-[#FCA5A5] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in duration-200">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-[#EF4444] text-white shrink-0">
-              <AlertTriangle className="h-5 w-5" />
+        <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#FEF2F2] to-[#FFF1F2] border border-[#FCA5A5] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-[#EF4444] text-white shrink-0">
+              <AlertTriangle className="h-4.5 w-4.5" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-[#991B1B]">
+              <h3 className="text-xs font-bold text-[#991B1B]">
                 {myTickets.filter((t) => t.status === "assigned" || t.status === "submitted").length} Unacknowledged Patient Complaint(s)
               </h3>
-              <p className="text-xs text-[#7F1D1D]">
+              <p className="text-[11px] text-[#7F1D1D]">
                 Immediate attention required. Acknowledge tickets to notify patients that staff is en route.
               </p>
             </div>
           </div>
           <button
             onClick={() => setFilterTab("unacknowledged")}
-            className="px-4 py-2 rounded-2xl bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap self-start sm:self-auto"
+            className="px-3.5 py-1.5 rounded-lg bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap self-start sm:self-auto"
           >
             View Unacknowledged Queue →
           </button>
@@ -158,7 +158,7 @@ export function StaffWorkspace({
       )}
 
       {/* Triage Tabs */}
-      <div className="flex gap-2.5 overflow-x-auto pb-3 border-b-2 border-[#CBD5E1] text-sm font-bold">
+      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#CBD5E1] text-xs font-bold">
         {[
           { id: "all", label: "My Assigned", count: myTickets.length },
           { id: "unacknowledged", label: "Unacknowledged", count: myTickets.filter((t) => t.status === "assigned" || t.status === "submitted").length },
@@ -171,15 +171,15 @@ export function StaffWorkspace({
           <button
             key={tab.id}
             onClick={() => setFilterTab(tab.id as any)}
-            className={`px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap flex items-center gap-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer text-xs ${
               filterTab === tab.id
-                ? "bg-[#176B63] text-white shadow-md shadow-[#176B63]/25"
-                : "bg-white border-2 border-[#CBD5E1] text-[#334155] hover:text-[#0F172A] hover:bg-[#F8FAFC]"
+                ? "bg-[#176B63] text-white shadow-sm"
+                : "bg-white border border-[#CBD5E1] text-[#334155] hover:text-[#0F172A] hover:bg-[#F8FAFC]"
             }`}
           >
             <span>{tab.label}</span>
             <span
-              className={`text-xs px-2 py-0.5 rounded-full font-black ${
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                 filterTab === tab.id ? "bg-white/20 text-white" : "bg-[#F1F5F9] text-[#0F172A]"
               }`}
             >
@@ -190,11 +190,11 @@ export function StaffWorkspace({
       </div>
 
       {/* Ticket Action Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTickets.length === 0 ? (
-          <div className="col-span-full py-20 text-center text-sm text-[#475569] bg-white rounded-3xl border-2 border-[#CBD5E1] shadow-xs">
-            <CheckCircle2 className="h-10 w-10 text-[#16805D] mx-auto mb-3" />
-            <span className="font-extrabold text-base text-[#0F172A] block">Zero items in this queue</span>
+          <div className="col-span-full py-14 text-center text-xs text-[#475569] bg-white rounded-xl border border-[#CBD5E1] shadow-2xs">
+            <CheckCircle2 className="h-8 w-8 text-[#16805D] mx-auto mb-2" />
+            <span className="font-extrabold text-sm text-[#0F172A] block">Zero items in this queue</span>
             <span>All tasks up to date for this operational filter.</span>
           </div>
         ) : (
@@ -206,7 +206,7 @@ export function StaffWorkspace({
               <div
                 key={ticket.id}
                 onClick={() => onSelectTicket(ticket.id)}
-                className="bg-white rounded-3xl border-2 border-[#CBD5E1] hover:border-[#176B63] p-6 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between space-y-5 group"
+                className="bg-white rounded-xl border border-[#CBD5E1] hover:border-[#176B63] p-4.5 shadow-2xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between space-y-3.5 group"
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">

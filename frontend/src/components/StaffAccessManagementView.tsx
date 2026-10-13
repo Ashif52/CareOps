@@ -38,6 +38,8 @@ import { StaffDetailDrawer } from "@/components/StaffDetailDrawer";
 import { CreateStaffModal } from "@/components/CreateStaffModal";
 import { RolesManagementModal } from "@/components/RolesManagementModal";
 import { SecurityEventsModal } from "@/components/SecurityEventsModal";
+import { DepartmentAnalyticsModal } from "@/components/departments/DepartmentAnalyticsModal";
+import { PermissionMatrixModal } from "@/components/common/PermissionMatrixModal";
 
 interface StaffAccessManagementViewProps {
   departments: Department[];
@@ -50,6 +52,8 @@ export function StaffAccessManagementView({
 }: StaffAccessManagementViewProps) {
   // Navigation Section
   const [activeViewMode, setActiveViewMode] = useState<"directory" | "departments">("directory");
+  const [selectedAnalyticsDeptId, setSelectedAnalyticsDeptId] = useState<string | null>(null);
+  const [permissionTargetUser, setPermissionTargetUser] = useState<StaffMember | null>(null);
 
   // Directory State
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -290,19 +294,19 @@ export function StaffAccessManagementView({
   };
 
   return (
-    <div className="p-8 sm:p-10 space-y-8 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* 1. Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-[#176B63] text-white shadow-md shadow-[#176B63]/20">
-              <Users className="h-7 w-7" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-[#176B63] text-white shadow-sm">
+              <Users className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-[#0F172A] tracking-tight">
                 Staff & Access Management
               </h1>
-              <p className="text-sm sm:text-base text-[#475569] mt-0.5 font-semibold">
+              <p className="text-xs sm:text-sm text-[#475569] mt-0.5 font-medium">
                 Manage hospital personnel, roles, account security, and departmental access.
               </p>
             </div>
@@ -310,39 +314,39 @@ export function StaffAccessManagementView({
         </div>
 
         {/* Global Header Actions */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleExportCSV}
-            className="px-4 py-2.5 rounded-2xl border-2 border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] text-sm font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+            className="px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             title="Export Directory to CSV"
           >
-            <Download className="h-4 w-4 text-[#475569]" />
+            <Download className="h-3.5 w-3.5 text-[#475569]" />
             <span>Export Staff</span>
           </button>
 
           <button
             onClick={() => setShowRolesModal(true)}
-            className="px-4 py-2.5 rounded-2xl border-2 border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] text-sm font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+            className="px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             title="Inspect Hospital Roles & Granular Permissions"
           >
-            <ShieldCheck className="h-4 w-4 text-[#176B63]" />
+            <ShieldCheck className="h-3.5 w-3.5 text-[#176B63]" />
             <span>Manage Roles</span>
           </button>
 
           <button
             onClick={() => setShowSecurityModal(true)}
-            className="px-4 py-2.5 rounded-2xl border-2 border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] text-sm font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+            className="px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             title="View Security Telemetry & Lockout Logs"
           >
-            <ShieldAlert className="h-4 w-4 text-[#DC2626]" />
+            <ShieldAlert className="h-3.5 w-3.5 text-[#DC2626]" />
             <span>Security Events</span>
           </button>
 
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-5 py-2.5 rounded-2xl bg-[#176B63] hover:bg-[#10574F] text-white text-sm font-black flex items-center gap-2 shadow-md shadow-[#176B63]/25 transition-all cursor-pointer"
+            className="px-3.5 py-1.5 rounded-lg bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
           >
-            <UserPlus className="h-4.5 w-4.5" />
+            <UserPlus className="h-4 w-4" />
             <span>+ Create Staff</span>
           </button>
         </div>
@@ -661,6 +665,14 @@ export function StaffAccessManagementView({
                             )}
 
                             <button
+                              onClick={() => setPermissionTargetUser(staff)}
+                              className="p-1.5 rounded-lg border border-[#CBD5E1] text-[#3868C9] hover:text-[#17212F] hover:bg-[#EEF4FD] cursor-pointer"
+                              title="Configure Granular Permissions Matrix"
+                            >
+                              <ShieldCheck className="h-4 w-4" />
+                            </button>
+
+                            <button
                               onClick={() => setSelectedStaff(staff)}
                               className="p-1.5 rounded-lg border border-[#CBD5E1] text-[#475569] hover:text-[#0F172A] hover:bg-[#E2E8F0] cursor-pointer"
                               title="Inspect Details"
@@ -739,14 +751,15 @@ export function StaffAccessManagementView({
             {departments.map((dept) => (
               <div
                 key={dept.id}
-                className="bg-white p-6 rounded-3xl border-2 border-[#CBD5E1] shadow-sm space-y-4 hover:shadow-md transition-all group"
+                onClick={() => setSelectedAnalyticsDeptId(dept.id)}
+                className="bg-white p-6 rounded-3xl border-2 border-[#CBD5E1] shadow-sm space-y-4 hover:border-[#3868C9] hover:shadow-md transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] group-hover:bg-[#EEF4FD] group-hover:border-[#BFDBFE] transition">
                       {getDepartmentIcon(dept.icon)}
                     </div>
-                    <span className="font-black text-base text-[#0F172A]">{dept.name}</span>
+                    <span className="font-black text-base text-[#0F172A] group-hover:text-[#3868C9] transition">{dept.name}</span>
                   </div>
                   <span className="font-mono text-xs font-black text-[#176B63] bg-[#E8F3F1] px-2.5 py-1 rounded-lg border border-[#99F6E4]">
                     {dept.code}
@@ -760,6 +773,10 @@ export function StaffAccessManagementView({
                 <div className="pt-4 border-t-2 border-[#F1F5F9] flex justify-between text-xs font-bold text-[#475569]">
                   <span>Active Tickets: <strong className="text-[#0F172A] text-sm">{dept.active_ticket_count || 0}</strong></span>
                   <span>Eligible Personnel: <strong className="text-[#176B63] text-sm">{dept.staff_count || 0}</strong></span>
+                </div>
+
+                <div className="pt-1 flex items-center justify-end text-[11px] font-bold text-[#3868C9] group-hover:underline">
+                  <span>View Live Performance Telemetry →</span>
                 </div>
               </div>
             ))}
@@ -932,6 +949,27 @@ export function StaffAccessManagementView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Department Performance Analytics Modal */}
+      {selectedAnalyticsDeptId && (
+        <DepartmentAnalyticsModal
+          departmentId={selectedAnalyticsDeptId}
+          onClose={() => setSelectedAnalyticsDeptId(null)}
+        />
+      )}
+
+      {/* Staff Granular Permission Matrix Modal */}
+      {permissionTargetUser && (
+        <PermissionMatrixModal
+          isOpen={true}
+          onClose={() => setPermissionTargetUser(null)}
+          userId={permissionTargetUser.id}
+          userName={permissionTargetUser.name}
+          userRole={permissionTargetUser.role}
+          isSuperadminTarget={false}
+          onSaved={loadStaffDirectory}
+        />
       )}
     </div>
   );

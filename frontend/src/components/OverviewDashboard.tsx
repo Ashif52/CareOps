@@ -119,33 +119,33 @@ export function OverviewDashboard({
   };
 
   return (
-    <div className="p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="p-5 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* 6 KPI Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {kpiCards.map((kpi, idx) => {
           const Icon = kpi.icon;
           return (
             <div
               key={idx}
-              className={`bg-white rounded-2xl p-5 border-2 ${kpi.border} shadow-sm flex flex-col justify-between hover:shadow-lg transition-all`}
+              className={`bg-white rounded-xl p-3.5 border ${kpi.border} shadow-2xs flex flex-col justify-between hover:shadow-sm transition-all`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-[#64748B] truncate">
+                <span className="text-xs font-semibold text-[#64748B] truncate">
                   {kpi.title}
                 </span>
-                <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md ${kpi.badgeColor}`}>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${kpi.badgeColor}`}>
                   {kpi.badge}
                 </span>
               </div>
-              <div className="my-3 flex items-baseline justify-between">
-                <span className={`text-3xl font-black tracking-tight tabular-nums ${kpi.color}`}>
+              <div className="my-2 flex items-baseline justify-between">
+                <span className={`text-2xl font-black tracking-tight tabular-nums ${kpi.color}`}>
                   {kpi.value}
                 </span>
-                <div className="p-2 rounded-xl bg-[#F8FAFC] shadow-2xs">
-                  <Icon className={`h-5 w-5 ${kpi.color}`} />
+                <div className="p-1.5 rounded-lg bg-[#F8FAFC]">
+                  <Icon className={`h-4 w-4 ${kpi.color}`} />
                 </div>
               </div>
-              <div className="text-xs text-[#64748B] truncate font-semibold">
+              <div className="text-[11px] text-[#64748B] truncate font-medium">
                 {kpi.sub}
               </div>
             </div>
@@ -154,7 +154,7 @@ export function OverviewDashboard({
       </div>
 
       {/* Main Grid: Charts & Operations */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Ticket Volume Trends */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-[#E5E9EF] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-between mb-4">

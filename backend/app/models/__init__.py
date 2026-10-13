@@ -50,10 +50,13 @@ class User(Base):
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
     permissions_override = Column(Text, nullable=True)
+    supervisor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_demo = Column(Boolean, default=False)
     
     created_at = Column(DateTime(timezone=True), default=utc_now)
     
     department = relationship("Department", back_populates="users", foreign_keys=[department_id])
+    assigned_supervisor = relationship("User", remote_side=[id], foreign_keys=[supervisor_id], backref="assigned_staff_members")
     assigned_tickets = relationship("Ticket", back_populates="assigned_staff", foreign_keys="Ticket.assigned_staff_id")
     supervised_tickets = relationship("Ticket", back_populates="assigned_supervisor", foreign_keys="Ticket.assigned_supervisor_id")
 
@@ -67,6 +70,7 @@ class Room(Base):
     qr_token = Column(String(100), nullable=False, unique=True, index=True)
     bed_count = Column(Integer, default=1)
     is_active = Column(Boolean, default=True)
+    is_demo = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=utc_now)
     
     tickets = relationship("Ticket", back_populates="room")
@@ -106,10 +110,18 @@ class Ticket(Base):
     # SLA timers & deadlines
     sla_acknowledgement_deadline = Column(DateTime(timezone=True), nullable=True)
     sla_resolution_deadline = Column(DateTime(timezone=True), nullable=True, index=True)
+    assigned_at = Column(DateTime(timezone=True), nullable=True)
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    en_route_at = Column(DateTime(timezone=True), nullable=True)
+    work_started_at = Column(DateTime(timezone=True), nullable=True)
     in_progress_at = Column(DateTime(timezone=True), nullable=True)
+    work_completed_at = Column(DateTime(timezone=True), nullable=True)
     resolution_submitted_at = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Calculated ETA
+    estimated_arrival_minutes = Column(Integer, nullable=True)
+    estimated_arrival_at = Column(DateTime(timezone=True), nullable=True)
     
     # Resolution details
     resolution_summary = Column(Text, nullable=True)
@@ -118,10 +130,12 @@ class Ticket(Base):
     delay_reason = Column(Text, nullable=True)
     revised_eta = Column(DateTime(timezone=True), nullable=True)
     
-    # Patient interaction
+    # Patient interaction & security
     patient_contact = Column(String(50), nullable=True)
+    patient_tracking_token = Column(String(100), unique=True, index=True, nullable=True)
     patient_feedback_rating = Column(Integer, nullable=True)
     patient_feedback_comment = Column(Text, nullable=True)
+    is_demo = Column(Boolean, default=False)
     
     created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -151,6 +165,7 @@ class Evidence(Base):
     equipment_type = Column(String(100), nullable=True)
     uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
+    is_demo = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=utc_now)
     
     ticket = relationship("Ticket", back_populates="evidences")
@@ -164,6 +179,11 @@ class AIVerificationJob(Base):
     
     before_evidence_id = Column(Integer, ForeignKey("evidences.id"), nullable=True)
     after_evidence_id = Column(Integer, ForeignKey("evidences.id"), nullable=True)
+    
+    # Provider & Model tracking
+    provider_selected = Column(String(50), default="mock")  # "openai", "gemini", "anthropic", "mock"
+    model_name_selected = Column(String(100), default="careops-vision-default")
+    is_demo = Column(Boolean, default=False)
     
     # Structured outcome dimensions
     evidence_relevance = Column(String(50), default="high")  # high, medium, low, mismatch
@@ -345,6 +365,7 @@ class GoogleReview(Base):
     # Separation of concerns: external Google reviews are separate from internal QR tickets,
     # but authorized admins can explicitly link a related ticket when appropriate.
     linked_ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True)
+    is_demo = Column(Boolean, default=False)
     
     created_at = Column(DateTime(timezone=True), default=utc_now)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -435,3 +456,101 @@ class ReviewChatMessage(Base):
 
     review = relationship("GoogleReview", back_populates="chat_messages")
     user = relationship("User")
+
+
+# ==============================================================================
+# NPS & PATIENT EXPERIENCE (SEPARATE FROM GOOGLE REVIEWS)
+# ==============================================================================
+
+class NPSResponse(Base):
+    __tablename__ = "nps_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True)
+    patient_contact = Column(String(50), nullable=True)
+    department_id = Column(String(50), ForeignKey("departments.id"), nullable=True, index=True)
+    room_number = Column(String(50), nullable=True)
+    
+    # 3-Emoji Satisfaction Rating: "unhappy", "okay", "happy"
+    emoji_rating = Column(String(20), nullable=False, index=True)
+    
+    # Standard 0-10 Formal NPS Score: 0 to 10
+    # Promoters: 9-10, Passives: 7-8, Detractors: 0-6
+    nps_score = Column(Integer, nullable=True, index=True)
+    
+    feedback_comment = Column(Text, nullable=True)
+    is_critical = Column(Boolean, default=False, index=True)  # True for unhappy emoji or nps_score <= 6
+    is_demo = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
+
+    ticket = relationship("Ticket", foreign_keys=[ticket_id])
+    department = relationship("Department", foreign_keys=[department_id])
+
+
+# ==============================================================================
+# WHATSAPP NOTIFICATION LIFECYCLE & DELIVERY AUDITING
+# ==============================================================================
+
+class WhatsAppMessage(Base):
+    __tablename__ = "whatsapp_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True)
+    recipient_mobile = Column(String(50), nullable=False, index=True)
+    template_name = Column(String(100), nullable=True)
+    message_body = Column(Text, nullable=False)
+    event_type = Column(String(50), nullable=False, index=True)
+    # queued, accepted, delivered, failed, read
+    delivery_status = Column(String(30), default="queued", index=True)
+    provider_message_id = Column(String(150), nullable=True, index=True)
+    error_message = Column(Text, nullable=True)
+    is_demo = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    ticket = relationship("Ticket", foreign_keys=[ticket_id])
+
+
+# ==============================================================================
+# SUPERADMIN DATABASE MAINTENANCE AUDIT LOG
+# ==============================================================================
+
+class MaintenanceAuditLog(Base):
+    __tablename__ = "maintenance_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    actor_name = Column(String(100), nullable=False)
+    selected_categories = Column(Text, nullable=False)  # JSON string
+    affected_counts = Column(Text, nullable=False)      # JSON string
+    confirmation_phrase = Column(String(50), nullable=False)
+    status = Column(String(30), default="completed")    # "completed", "failed"
+    created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
+
+    actor = relationship("User", foreign_keys=[actor_id])
+
+
+# ==============================================================================
+# SYSTEM SECURITY SETTINGS (SUPERADMIN ONLY)
+# ==============================================================================
+
+class SystemSecuritySetting(Base):
+    __tablename__ = "system_security_settings"
+
+    id = Column(Integer, primary_key=True, default=1)
+    max_failed_logins = Column(Integer, default=3)
+    lockout_duration_minutes = Column(Integer, default=30)
+    session_timeout_minutes = Column(Integer, default=60)
+    require_password_symbols = Column(Boolean, default=True)
+    require_password_min_length = Column(Integer, default=8)
+    whatsapp_provider = Column(String(50), default="meta_business_api")
+    whatsapp_phone_number_id = Column(String(100), nullable=True)
+    whatsapp_business_account_id = Column(String(100), nullable=True)
+    whatsapp_api_token = Column(Text, nullable=True)
+    ai_vision_provider = Column(String(50), default="mock")  # openai, gemini, anthropic, mock
+    ai_vision_model = Column(String(100), default="careops-vision-default")
+    openai_api_key = Column(Text, nullable=True)
+    gemini_api_key = Column(Text, nullable=True)
+    anthropic_api_key = Column(Text, nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+

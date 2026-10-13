@@ -13,14 +13,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
 from app.database import get_db
-from app.models import User, Department, AuditLog
+from app.models import User, Department, AuditLog, Ticket
 from app.schemas import (
     StaffCreate, StaffUpdate, StaffActionReason,
-    StaffPasswordResetRequest, StaffResponse, StaffListResponse, StaffMetrics
+    StaffPasswordResetRequest, StaffResponse, StaffListResponse, StaffMetrics,
+    UserPermissionsUpdateRequest
 )
 from app.services.auth_service import get_current_user, get_password_hash
 from app.services.rbac_service import (
-    has_permission, get_user_permissions, get_all_roles_metadata, HOSPITAL_ROLES
+    has_permission, get_user_permissions, get_role_permissions,
+    get_permission_matrix_catalog, get_all_roles_metadata, HOSPITAL_ROLES
 )
 
 router = APIRouter(prefix="/staff", tags=["Staff & Access Management"])
@@ -34,6 +36,11 @@ def format_staff_response(u: User, db: Session) -> dict:
         dept = db.query(Department).filter(Department.id == u.department_id).first()
         dept_name = dept.name if dept else u.department_id.capitalize()
     
+    sup_name = None
+    if getattr(u, "supervisor_id", None):
+        sup = db.query(User).filter(User.id == u.supervisor_id).first()
+        sup_name = sup.name if sup else None
+    
     return {
         "id": u.id,
         "employee_id": u.employee_id,
@@ -43,6 +50,8 @@ def format_staff_response(u: User, db: Session) -> dict:
         "role": u.role,
         "department_id": u.department_id,
         "department_name": dept_name,
+        "supervisor_id": getattr(u, "supervisor_id", None),
+        "supervisor_name": sup_name,
         "designation": u.designation or "Hospital Personnel",
         "account_status": getattr(u, "account_status", "active"),
         "is_active": u.is_active,
@@ -249,6 +258,13 @@ def create_staff(
     initial_pw = payload.initial_password or "TempPass2026!"
     pw_hash = get_password_hash(initial_pw)
 
+    # Mandatory mobile number for Supervisors
+    if payload.role == "supervisor" and (not payload.phone or len(payload.phone.strip()) < 7):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile phone number is mandatory for Supervisor accounts to enable staff calling and operational coordination."
+        )
+
     # Default medical avatars based on role
     avatar_choice = "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150"
     if payload.role == "doctor":
@@ -258,6 +274,8 @@ def create_staff(
     elif payload.role == "supervisor":
         avatar_choice = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"
 
+    perms_override = json.dumps(payload.permissions) if payload.permissions else None
+
     new_user = User(
         name=payload.name.strip(),
         employee_id=clean_emp_id,
@@ -266,6 +284,8 @@ def create_staff(
         department_id=payload.department_id,
         designation=payload.designation.strip(),
         role=payload.role,
+        supervisor_id=payload.supervisor_id,
+        permissions_override=perms_override,
         account_status="active",
         is_active=True,
         failed_login_attempts=0,
@@ -291,6 +311,7 @@ def create_staff(
             "department": new_user.department_id,
             "designation": new_user.designation,
             "role": new_user.role,
+            "supervisor_id": new_user.supervisor_id,
             "require_pw_change": payload.require_password_change
         })
     )
@@ -364,6 +385,14 @@ def update_staff(
                 detail="Operation blocked: Cannot demote the last active Super Administrator in the hospital system."
             )
 
+    # Enforce supervisor mobile number if updating role or phone
+    if (payload.role == "supervisor" or (payload.role is None and target_user.role == "supervisor")) and payload.phone is not None:
+        if len(payload.phone.strip()) < 7:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mobile phone number is mandatory for Supervisor accounts."
+            )
+
     updates = {}
     if payload.name:
         target_user.name = payload.name.strip()
@@ -380,6 +409,9 @@ def update_staff(
     if payload.role:
         target_user.role = payload.role
         updates["role"] = target_user.role
+    if payload.supervisor_id is not None:
+        target_user.supervisor_id = payload.supervisor_id if payload.supervisor_id > 0 else None
+        updates["supervisor_id"] = target_user.supervisor_id
 
     audit = AuditLog(
         action="STAFF_UPDATED_ADMIN",
@@ -593,3 +625,143 @@ def reset_staff_password(
         "temporary_password": temp_password,
         "require_change_on_login": payload.require_change
     }
+
+# ----------------- 10. Supervisor Roster & Team Coordination -----------------
+@router.get("/supervisors/list")
+def list_supervisors(
+    department_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns active department supervisors for assignment dropdowns."""
+    query = db.query(User).filter(User.role == "supervisor", User.is_active == True)
+    if department_id and department_id != "all":
+        query = query.filter(User.department_id == department_id)
+    sups = query.order_by(User.name.asc()).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "email": s.email,
+            "phone": s.phone,
+            "department_id": s.department_id,
+            "employee_id": s.employee_id,
+            "designation": s.designation
+        }
+        for s in sups
+    ]
+
+@router.get("/supervisors/{supervisor_id}/team")
+def get_supervisor_team(
+    supervisor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns staff members assigned to the designated supervisor."""
+    sup = db.query(User).filter(User.id == supervisor_id).first()
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supervisor not found")
+
+    team = db.query(User).filter(
+        or_(User.supervisor_id == supervisor_id, User.department_id == sup.department_id),
+        User.id != supervisor_id,
+        User.is_active == True
+    ).all()
+
+    return [
+        {
+            "id": m.id,
+            "name": m.name,
+            "email": m.email,
+            "phone": m.phone,
+            "role": m.role,
+            "designation": m.designation,
+            "employee_id": m.employee_id,
+            "department_id": m.department_id,
+            "supervisor_id": m.supervisor_id,
+            "active_tickets_count": db.query(Ticket).filter(
+                Ticket.assigned_staff_id == m.id,
+                Ticket.status.in_(["assigned", "acknowledged", "in_progress"])
+            ).count()
+        }
+        for m in team
+    ]
+
+# ----------------- 11. Granular Permission Matrix Configuration -----------------
+@router.get("/permissions/catalog")
+def get_permission_catalog_matrix(current_user: User = Depends(get_current_user)):
+    """Returns the master module x action permission matrix catalog."""
+    return {
+        "catalog": get_permission_matrix_catalog(is_superadmin=(current_user.role == "superadmin"))
+    }
+
+@router.get("/{user_id}/permissions")
+def get_user_permissions_matrix(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve full permission matrix, base role defaults, and persistent active permissions for a user."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+
+    effective = get_user_permissions(target)
+    base_perms = get_role_permissions(target.role)
+    catalog = get_permission_matrix_catalog(is_superadmin=False)
+
+    return {
+        "user_id": target.id,
+        "name": target.name,
+        "role": target.role,
+        "effective_permissions": effective,
+        "base_permissions": base_perms,
+        "matrix_catalog": catalog
+    }
+
+@router.put("/{user_id}/permissions")
+def update_user_permissions_matrix(
+    user_id: int,
+    payload: UserPermissionsUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Admin updates granular permission matrix for a staff/supervisor member."""
+    if not (current_user.role in ["admin", "superadmin"] or has_permission(current_user, "staff.update")):
+        raise HTTPException(status_code=403, detail="Access denied: Only Administrators can configure permissions.")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+
+    # Protection: Prevent non-superadmin from granting superadmin privileges or editing superadmin
+    if target.role == "superadmin" and current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Cannot modify Superadmin permissions.")
+
+    forbidden = {"db_maintenance.execute", "admin.create", "admin.deactivate", "admin.permissions_manage"}
+    sanitized = [p for p in payload.permissions if p not in forbidden]
+
+    target.permissions_override = json.dumps(sanitized)
+
+    audit = AuditLog(
+        action="PERMISSIONS_UPDATED_ADMIN",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({
+            "target_user_id": target.id,
+            "target_email": target.email,
+            "granted_count": len(sanitized),
+            "permissions": sanitized
+        })
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(target)
+
+    return {
+        "success": True,
+        "message": f"Updated permissions matrix for {target.name}.",
+        "effective_permissions": get_user_permissions(target)
+    }
+

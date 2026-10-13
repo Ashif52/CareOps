@@ -6,7 +6,8 @@ from app.models import (
     Department, User, Room, Ticket, Evidence, AIVerificationJob,
     SLAPolicy, EscalationLog, TicketNote, AuditLog,
     GoogleIntegration, GoogleLocation, GoogleReview, ReviewAlert,
-    ReviewAIAnalysis, ReviewCorrectiveAction
+    ReviewAIAnalysis, ReviewCorrectiveAction,
+    NPSResponse, SystemSecuritySetting
 )
 from app.services.auth_service import get_password_hash
 
@@ -39,6 +40,9 @@ def seed_database():
             # Ensure Google Business Profile & Reviews are seeded
             if not db.query(GoogleIntegration).first():
                 seed_google_reviews(db)
+
+            # Ensure NPS & Security Settings are initialized
+            seed_nps_and_security(db)
 
             print("Database already contains data, skipping full seed.")
             return
@@ -842,6 +846,71 @@ def seed_google_reviews(db: Session):
 
     db.commit()
     print("Google Business Profile and live reviews intelligence successfully seeded!")
+
+
+def seed_nps_and_security(db: Session):
+    print("Seeding NPS responses and system security settings...")
+    now = utc_now()
+
+    # 1. Ensure SystemSecuritySetting row 1 exists
+    sec = db.query(SystemSecuritySetting).filter(SystemSecuritySetting.id == 1).first()
+    if not sec:
+        sec = SystemSecuritySetting(
+            id=1,
+            max_failed_logins=3,
+            lockout_duration_minutes=30,
+            session_timeout_minutes=60,
+            require_password_symbols=True,
+            require_password_min_length=8,
+            whatsapp_provider="meta_business_api",
+            ai_vision_provider="mock",
+            ai_vision_model="careops-vision-default"
+        )
+        db.add(sec)
+        db.flush()
+
+    # 2. NPS Responses across canonical departments
+    if not db.query(NPSResponse).first():
+        sample_responses = [
+            {"dept": "maintenance", "room": "ICU-Bed-04", "emoji": "happy", "nps": 10, "comment": "AC fan repaired in under 15 minutes. Very quiet and courteous technician.", "crit": False, "days": 0},
+            {"dept": "maintenance", "room": "Ward-102", "emoji": "happy", "nps": 9, "comment": "Bathroom tap leak fixed quickly. Excellent service.", "crit": False, "days": 1},
+            {"dept": "maintenance", "room": "Room-204", "emoji": "okay", "nps": 7, "comment": "Work was completed but technician arrived 25 minutes after acknowledgement.", "crit": False, "days": 2},
+            {"dept": "maintenance", "room": "Room-305", "emoji": "unhappy", "nps": 3, "comment": "Exhaust fan still making loud vibrating noise after technician left.", "crit": True, "days": 3},
+            {"dept": "housekeeping", "room": "Room-401", "emoji": "happy", "nps": 10, "comment": "Spotless room cleaning and waste disposal. Very hygienic.", "crit": False, "days": 0},
+            {"dept": "housekeeping", "room": "Room-208", "emoji": "happy", "nps": 9, "comment": "Prompt floor sanitization after accidental spill.", "crit": False, "days": 1},
+            {"dept": "housekeeping", "room": "Ward-302", "emoji": "okay", "nps": 8, "comment": "Adequate cleaning. Arrived slightly late during shift handover.", "crit": False, "days": 3},
+            {"dept": "linen", "room": "Room-105", "emoji": "happy", "nps": 9, "comment": "Fresh hypoallergenic bedsheets delivered within 10 minutes.", "crit": False, "days": 1},
+            {"dept": "linen", "room": "Room-502", "emoji": "unhappy", "nps": 4, "comment": "Requested extra clean blanket, took over 45 minutes to arrive.", "crit": True, "days": 2},
+            {"dept": "medical", "room": "ICU-Bed-02", "emoji": "happy", "nps": 10, "comment": "Nurse call response was rapid and doctor explained medication clearly.", "crit": False, "days": 0},
+            {"dept": "medical", "room": "Room-310", "emoji": "happy", "nps": 9, "comment": "Doctor visited promptly and addressed chest discomfort with empathy.", "crit": False, "days": 2},
+            {"dept": "medical", "room": "Ward-201", "emoji": "okay", "nps": 7, "comment": "Care was good but shift change caused a brief delay in scheduled vitals check.", "crit": False, "days": 4},
+            {"dept": "it", "room": "Doctor-Consult-12", "emoji": "happy", "nps": 10, "comment": "Bedside patient monitoring display synced immediately.", "crit": False, "days": 1},
+            {"dept": "it", "room": "Room-102", "emoji": "unhappy", "nps": 5, "comment": "Patient TV WiFi portal kept disconnecting throughout the evening.", "crit": True, "days": 2},
+            {"dept": "it", "room": "Room-405", "emoji": "happy", "nps": 9, "comment": "Technician resolved the nurse call system network issue efficiently.", "crit": False, "days": 3},
+        ]
+
+        tickets = db.query(Ticket).all()
+        ticket_map = {t.department_id: t.id for t in tickets}
+
+        for idx, sr in enumerate(sample_responses):
+            t_id = ticket_map.get(sr["dept"])
+            resp = NPSResponse(
+                ticket_id=t_id,
+                patient_contact="+91 98765 111" + str(idx).zfill(2),
+                department_id=sr["dept"],
+                room_number=sr["room"],
+                emoji_rating=sr["emoji"],
+                nps_score=sr["nps"],
+                feedback_comment=sr["comment"],
+                is_critical=sr["crit"],
+                is_demo=True,
+                created_at=now - timedelta(days=sr["days"], hours=idx * 2)
+            )
+            db.add(resp)
+
+    db.commit()
+    print("NPS & Security settings successfully initialized!")
+
 
 
 if __name__ == "__main__":
