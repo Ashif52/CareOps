@@ -853,6 +853,14 @@ export const api = {
   },
   submitNPSFeedback: (data: { ticket_id?: number; tracking_token?: string; emoji_rating: string; nps_score?: number; feedback_comment?: string }) =>
     fetchWithAuth("/nps/submit", { method: "POST", body: JSON.stringify(data) }),
+  updateNPSAction: (
+    responseId: number,
+    data: {
+      investigation_notes?: string;
+      corrective_action?: string;
+      resolution_status?: string;
+    }
+  ) => fetchWithAuth(`/nps/responses/${responseId}/action`, { method: "PUT", body: JSON.stringify(data) }),
 
   // ============================================================================
   // AI VISION MODELS CONFIGURATION (SECTION 11)

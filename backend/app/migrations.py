@@ -72,6 +72,14 @@ def run_migrations():
         ],
         "google_reviews": [
             ("is_demo", bool_type),
+        ],
+        "nps_responses": [
+            ("source", "VARCHAR(100) DEFAULT 'Bedside QR Code'"),
+            ("investigation_notes", "TEXT"),
+            ("corrective_action", "TEXT"),
+            ("resolution_status", "VARCHAR(50) DEFAULT 'unresolved'"),
+            ("resolved_by", "VARCHAR(100)"),
+            ("resolved_at", datetime_type),
         ]
     }
 

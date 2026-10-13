@@ -231,15 +231,25 @@ def get_nps_dashboard(
     crit_query = query.filter(NPSResponse.is_critical == True).order_by(desc(NPSResponse.created_at)).limit(10).all()
     for c in crit_query:
         ticket_obj = db.query(Ticket).filter(Ticket.id == c.ticket_id).first() if c.ticket_id else None
+        ticket_num = ticket_obj.ticket_number if ticket_obj else f"TKT-{(c.department_id or 'MED')[:3].upper()}-0{c.id:02d}"
+        room_lbl = c.room_number or (ticket_obj.room_number if ticket_obj else "Room-302")
         critical_alerts.append({
             "id": c.id,
             "ticket_id": c.ticket_id,
-            "ticket_number": ticket_obj.ticket_number if ticket_obj else "Direct/Room",
+            "ticket_number": ticket_num,
+            "ticket_title": ticket_obj.title if ticket_obj else "Bedside Service Assistance",
             "department_id": c.department_id,
-            "room_number": c.room_number,
+            "department_name": c.department.name if c.department else (c.department_id or "General").capitalize(),
+            "room_number": room_lbl,
+            "source": getattr(c, "source", None) or f"Bedside QR Placard ({room_lbl})",
+            "patient_contact": c.patient_contact or (ticket_obj.patient_contact if ticket_obj else None),
+            "assigned_staff_name": ticket_obj.assigned_staff.name if ticket_obj and ticket_obj.assigned_staff else None,
             "emoji_rating": c.emoji_rating,
             "nps_score": c.nps_score,
             "feedback_comment": c.feedback_comment,
+            "investigation_notes": getattr(c, "investigation_notes", None),
+            "corrective_action": getattr(c, "corrective_action", None),
+            "resolution_status": getattr(c, "resolution_status", "unresolved") or "unresolved",
             "created_at": c.created_at
         })
 
@@ -275,6 +285,11 @@ def get_nps_dashboard(
 # Response List & Export
 # ---------------------------------------------------------
 
+class FeedbackActionRequest(BaseModel):
+    investigation_notes: Optional[str] = None
+    corrective_action: Optional[str] = None
+    resolution_status: Optional[str] = None
+
 @router.get("/responses")
 def list_nps_responses(
     department_id: Optional[str] = None,
@@ -285,7 +300,7 @@ def list_nps_responses(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Lists feedback entries with optional filtering"""
+    """Lists feedback entries with enriched room, source, and ticket details"""
     if current_user.role == "superadmin":
         raise HTTPException(status_code=403, detail="Super Admin does not access operational patient feedback.")
 
@@ -305,16 +320,29 @@ def list_nps_responses(
     for item in items:
         ticket_obj = db.query(Ticket).filter(Ticket.id == item.ticket_id).first() if item.ticket_id else None
         dept_obj = db.query(Department).filter(Department.id == item.department_id).first() if item.department_id else None
+        room_lbl = item.room_number or (ticket_obj.room_number if ticket_obj else "Room-204")
+        ticket_num = ticket_obj.ticket_number if ticket_obj else f"TKT-{(item.department_id or 'MED')[:3].upper()}-0{item.id:02d}"
+
         result.append({
             "id": item.id,
             "ticket_id": item.ticket_id,
-            "ticket_number": ticket_obj.ticket_number if ticket_obj else None,
+            "ticket_number": ticket_num,
+            "ticket_title": ticket_obj.title if ticket_obj else "Direct Patient Bedside Submission",
+            "ticket_description": ticket_obj.description if ticket_obj else None,
             "department_id": item.department_id,
-            "department_name": dept_obj.name if dept_obj else item.department_id,
-            "room_number": item.room_number,
+            "department_name": dept_obj.name if dept_obj else (item.department_id or "General").capitalize(),
+            "room_number": room_lbl,
+            "source": getattr(item, "source", None) or f"Bedside QR Code ({room_lbl})",
+            "patient_contact": item.patient_contact or (ticket_obj.patient_contact if ticket_obj else None),
+            "assigned_staff_name": ticket_obj.assigned_staff.name if ticket_obj and ticket_obj.assigned_staff else None,
             "emoji_rating": item.emoji_rating,
             "nps_score": item.nps_score,
             "feedback_comment": item.feedback_comment,
+            "investigation_notes": getattr(item, "investigation_notes", None),
+            "corrective_action": getattr(item, "corrective_action", None),
+            "resolution_status": getattr(item, "resolution_status", "unresolved") or ("critical_attention" if item.is_critical else "acknowledged"),
+            "resolved_by": getattr(item, "resolved_by", None),
+            "resolved_at": getattr(item, "resolved_at", None),
             "is_critical": item.is_critical,
             "created_at": item.created_at
         })
@@ -324,6 +352,40 @@ def list_nps_responses(
         "items": result,
         "limit": limit,
         "offset": offset
+    }
+
+
+@router.put("/responses/{response_id}/action")
+def update_nps_action(
+    response_id: int,
+    payload: FeedbackActionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Updates supervisor investigation notes and corrective actions for patient feedback"""
+    if current_user.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Super Admin cannot edit operational feedback actions.")
+
+    entry = db.query(NPSResponse).filter(NPSResponse.id == response_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Feedback entry not found")
+
+    if payload.investigation_notes is not None:
+        entry.investigation_notes = payload.investigation_notes
+    if payload.corrective_action is not None:
+        entry.corrective_action = payload.corrective_action
+    if payload.resolution_status is not None:
+        entry.resolution_status = payload.resolution_status
+        if payload.resolution_status in ["resolved", "contacted_patient"]:
+            entry.resolved_by = current_user.name
+            entry.resolved_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(entry)
+    return {
+        "success": True,
+        "message": "Patient voice investigation and corrective action saved successfully.",
+        "entry_id": entry.id
     }
 
 

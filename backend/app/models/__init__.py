@@ -479,6 +479,12 @@ class NPSResponse(Base):
     nps_score = Column(Integer, nullable=True, index=True)
     
     feedback_comment = Column(Text, nullable=True)
+    source = Column(String(100), default="Bedside QR Code", nullable=True)
+    investigation_notes = Column(Text, nullable=True)
+    corrective_action = Column(Text, nullable=True)
+    resolution_status = Column(String(50), default="unresolved", nullable=True)
+    resolved_by = Column(String(100), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
     is_critical = Column(Boolean, default=False, index=True)  # True for unhappy emoji or nps_score <= 6
     is_demo = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
