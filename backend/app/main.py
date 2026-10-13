@@ -34,15 +34,20 @@ async def sla_background_worker():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Ensure tables exist, apply schema migrations & seed DB if fresh
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        logger.warning(f"Base.metadata.create_all notice: {e}")
     try:
         run_migrations()
+        logger.info("Database migrations executed successfully.")
     except Exception as e:
-        logger.warning(f"Database migrations skipped or failed: {e}")
+        logger.error(f"Database migrations error: {e}", exc_info=True)
     try:
         seed_database()
+        logger.info("Database seeding checked/executed successfully.")
     except Exception as e:
-        logger.warning(f"Auto-seeding skipped or failed: {e}")
+        logger.error(f"Auto-seeding error: {e}", exc_info=True)
         
     # Start persistent SLA ticker
     worker_task = asyncio.create_task(sla_background_worker())
@@ -95,10 +100,19 @@ app.include_router(google_reviews.integrations_router, prefix=settings.API_V1_ST
 app.include_router(nps.router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health")
-def health_check():
+def health_check(heal: bool = False):
+    migration_res = "skipped"
+    if heal:
+        try:
+            run_migrations()
+            seed_database()
+            migration_res = "success"
+        except Exception as e:
+            migration_res = f"failed: {e}"
     return {
         "status": "healthy",
         "service": "CareOps AI Backend",
         "version": settings.VERSION,
+        "migration": migration_res,
         "engine": "FastAPI + SQLAlchemy + Asyncio SLA Engine + Computer Vision Analyzer"
     }

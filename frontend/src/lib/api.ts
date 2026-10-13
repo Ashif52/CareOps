@@ -515,23 +515,43 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
     headers.set("Content-Type", "application/json");
   }
   
-  const response = await fetch(`${getApiBase()}${endpoint}`, {
-    ...options,
-    headers,
-  });
-  
-  if (!response.ok) {
-    let errMessage = `Error ${response.status}: ${response.statusText}`;
-    try {
-      const data = await response.json();
-      if (data.detail) {
-        errMessage = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
-      }
-    } catch (_) {}
-    throw new Error(errMessage);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const response = await fetch(`${getApiBase()}${endpoint}`, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+    
+    if (!response.ok) {
+      let errMessage = `Error ${response.status}: ${response.statusText}`;
+      try {
+        const text = await response.text();
+        try {
+          const data = JSON.parse(text);
+          if (data.detail) {
+            errMessage = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+          }
+        } catch {
+          if (text && text.length < 150) {
+            errMessage = text;
+          }
+        }
+      } catch (_) {}
+      throw new Error(errMessage);
+    }
+    
+    return response.json();
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error("Request timed out. The backend service may be waking up from sleep. Please try again in a moment.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  return response.json();
 }
 
 export const api = {
