@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ShieldCheck,
   User,
@@ -14,7 +14,8 @@ import {
   ShieldAlert,
   Building2,
   CheckCircle2,
-  UserPlus
+  UserPlus,
+  Loader2
 } from "lucide-react";
 import { api, setStoredToken, User as UserType } from "@/lib/api";
 
@@ -31,8 +32,34 @@ export function PortalLoginGateway({
   const [password, setPassword] = useState("password123");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("Sign In to Workspace");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activePersona, setActivePersona] = useState<string>("admin");
+
+  // Pre-warm the backend as soon as the user opens the login screen
+  useEffect(() => {
+    api.warmup();
+  }, []);
+
+  // Progressive feedback while backend is waking up from sleep
+  useEffect(() => {
+    let t1: any, t2: any;
+    if (isLoading) {
+      setLoadingText("Verifying Credentials...");
+      t1 = setTimeout(() => {
+        setLoadingText("Connecting to Cloud Backend (waking up)...");
+      }, 3500);
+      t2 = setTimeout(() => {
+        setLoadingText("Booting Service... almost ready...");
+      }, 15000);
+    } else {
+      setLoadingText("Sign In to Workspace");
+    }
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isLoading]);
 
   // Registration state
   const [regName, setRegName] = useState("");
@@ -387,10 +414,11 @@ export function PortalLoginGateway({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-2.5 rounded-xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2 disabled:opacity-75 cursor-pointer"
                 >
-                  <span>{isLoading ? "Verifying Credentials..." : "Sign In to Workspace"}</span>
-                  <ArrowRight className="h-4 w-4" />
+                  {isLoading && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
+                  <span>{isLoading ? loadingText : "Sign In to Workspace"}</span>
+                  {!isLoading && <ArrowRight className="h-4 w-4 shrink-0" />}
                 </button>
               </form>
             ) : (

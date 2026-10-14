@@ -516,7 +516,8 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   }
   
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  // 90-second timeout to allow Render / cloud free-tier containers to wake up without premature aborts
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   try {
     const response = await fetch(`${getApiBase()}${endpoint}`, {
@@ -555,6 +556,14 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 }
 
 export const api = {
+  // Cloud Keep-Alive & Warmup
+  warmup: () => {
+    try {
+      fetch(`${getApiBase()}/health`, { method: "GET", cache: "no-store" }).catch(() => {});
+    } catch (_) {}
+  },
+  healthCheck: () => fetch(`${getApiBase()}/health`, { method: "GET", cache: "no-store" }).then(r => r.json()),
+
   // Auth
   login: (creds: { email: string; password: string }) =>
     fetchWithAuth("/auth/login", { method: "POST", body: JSON.stringify(creds) }),

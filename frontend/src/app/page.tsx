@@ -114,8 +114,9 @@ export default function CareOpsApp() {
     }
   };
 
-  // Check URL query parameters for direct QR scan link (e.g. ?room=CARE-RM204-7X9Q)
+  // Check URL query parameters for direct QR scan link & pre-warm cloud backend
   useEffect(() => {
+    api.warmup();
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const roomParam = params.get("room");
