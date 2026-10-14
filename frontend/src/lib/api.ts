@@ -57,18 +57,33 @@ export function parseUtcDate(val: string | number | Date | null | undefined): Da
 export function formatTime(val: string | number | Date | null | undefined, options?: Intl.DateTimeFormatOptions): string {
   const d = parseUtcDate(val);
   if (!d) return "—";
-  return d.toLocaleTimeString([], options || { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("en-US", options || { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 export function formatDateTime(val: string | number | Date | null | undefined, options?: Intl.DateTimeFormatOptions): string {
   const d = parseUtcDate(val);
   if (!d) return "—";
-  return d.toLocaleString([], options || {
+  return d.toLocaleString("en-US", options || {
     month: "short",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
   });
+}
+
+export function formatDurationHoursMinutes(minutes: number): string {
+  const totalMins = Math.abs(Math.round(minutes));
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`;
+  } else if (hours > 0) {
+    return `${hours}h`;
+  } else {
+    return `${mins}m`;
+  }
 }
 
 export interface User {
@@ -321,6 +336,7 @@ export interface DashboardMetrics {
     priority: string;
     status: string;
     minutes_overdue: number;
+    sla_resolution_deadline?: string | null;
   }>;
 }
 

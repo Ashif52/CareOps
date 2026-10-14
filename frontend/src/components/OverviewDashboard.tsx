@@ -26,7 +26,7 @@ import {
   Activity,
   ShieldCheck
 } from "lucide-react";
-import { DashboardMetrics, Ticket, User } from "@/lib/api";
+import { DashboardMetrics, Ticket, User, formatDurationHoursMinutes, formatTime } from "@/lib/api";
 
 interface OverviewDashboardProps {
   metrics: DashboardMetrics | null;
@@ -550,8 +550,9 @@ export function OverviewDashboard({
                         <span>•</span>
                         <span className="capitalize font-semibold text-[#334155]">{ticket.department_id}</span>
                         <span>•</span>
-                        <span className="font-black text-[#DC2626] bg-[#FEE2E2] px-2 py-0.5 rounded border border-[#FCA5A5]">
-                          {ticket.minutes_overdue}m overdue
+                        <span className="font-black text-[#DC2626] bg-[#FEE2E2] px-2 py-0.5 rounded border border-[#FCA5A5] tabular-nums">
+                          {formatDurationHoursMinutes(ticket.minutes_overdue)} overdue
+                          {ticket.sla_resolution_deadline && ` (${formatTime(ticket.sla_resolution_deadline)})`}
                         </span>
                       </div>
                     </div>

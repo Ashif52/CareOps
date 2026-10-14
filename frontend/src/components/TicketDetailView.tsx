@@ -21,7 +21,7 @@ import {
   Volume2,
   Loader2
 } from "lucide-react";
-import { Ticket, User as UserType, getFileUrl, formatTime, formatDateTime } from "@/lib/api";
+import { Ticket, User as UserType, getFileUrl, formatTime, formatDateTime, parseUtcDate, formatDurationHoursMinutes } from "@/lib/api";
 
 interface TicketDetailViewProps {
   ticket: Ticket;
@@ -331,12 +331,35 @@ export function TicketDetailView({
                       {ticket.assigned_supervisor_name || "Operations Lead"}
                     </span>
                   </div>
-                  <div className="flex justify-between py-1">
+                  <div className="flex justify-between items-center py-1">
                     <span className="text-[#667085]">Resolution Target:</span>
-                    <span className="font-semibold text-[#17212F] tabular-nums">
-                      {ticket.sla_resolution_deadline
-                        ? formatTime(ticket.sla_resolution_deadline)
-                        : "N/A"}
+                    <span className="font-semibold text-[#17212F] tabular-nums text-right">
+                      {ticket.sla_resolution_deadline ? (
+                        (() => {
+                          const parsed = parseUtcDate(ticket.sla_resolution_deadline);
+                          if (!parsed) return "N/A";
+                          const targetClock = formatTime(parsed);
+                          if (ticket.status === "closed") {
+                            return <span className="text-[#16805D]">{targetClock} (Resolved)</span>;
+                          }
+                          const diffMins = Math.round((parsed.getTime() - Date.now()) / 60000);
+                          const durationText = formatDurationHoursMinutes(diffMins);
+                          if (diffMins < 0) {
+                            return (
+                              <span className="text-[#991B1B] font-bold">
+                                {targetClock} ({durationText} Overdue)
+                              </span>
+                            );
+                          }
+                          return (
+                            <span>
+                              {targetClock} ({durationText} left)
+                            </span>
+                          );
+                        })()
+                      ) : (
+                        "N/A"
+                      )}
                     </span>
                   </div>
                 </div>

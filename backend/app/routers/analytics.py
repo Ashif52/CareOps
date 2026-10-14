@@ -122,6 +122,7 @@ def get_dashboard_metrics(
                     "department_id": t.department_id,
                     "priority": t.priority,
                     "status": t.status,
+                    "sla_resolution_deadline": dl.isoformat(),
                     "minutes_overdue": int((now - dl).total_seconds() / 60)
                 })
     overdue_list.sort(key=lambda x: x["minutes_overdue"], reverse=True)

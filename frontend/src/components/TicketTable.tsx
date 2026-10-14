@@ -16,7 +16,7 @@ import {
   User,
   ShieldAlert
 } from "lucide-react";
-import { Ticket, Department, type User as UserType, parseUtcDate } from "@/lib/api";
+import { Ticket, Department, type User as UserType, parseUtcDate, formatTime, formatDurationHoursMinutes } from "@/lib/api";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -114,28 +114,40 @@ export function TicketTable({
     const dl = parsed.getTime();
     const now = Date.now();
     const diffMins = Math.round((dl - now) / 60000);
+    const targetClock = formatTime(parsed);
+    const durationText = formatDurationHoursMinutes(diffMins);
 
     if (diffMins < 0) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs font-black text-[#991B1B] bg-[#FEE2E2] border border-[#FCA5A5] px-2.5 py-1 rounded-md tabular-nums">
-          <Flame className="h-3.5 w-3.5" />
-          <span>{Math.abs(diffMins)}m Overdue</span>
+        <span
+          title={`Target deadline: ${targetClock}`}
+          className="inline-flex items-center gap-1.5 text-xs font-black text-[#991B1B] bg-[#FEE2E2] border border-[#FCA5A5] px-2.5 py-1 rounded-md tabular-nums"
+        >
+          <Flame className="h-3.5 w-3.5 shrink-0" />
+          <span>{durationText} Overdue</span>
+          <span className="text-[10px] font-semibold text-[#991B1B]/75 ml-0.5">({targetClock})</span>
         </span>
       );
     } else if (diffMins <= 30) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs font-black text-[#92400E] bg-[#FEF3C7] border border-[#FCD34D] px-2.5 py-1 rounded-md tabular-nums">
-          <Clock className="h-3.5 w-3.5" />
-          <span>{diffMins}m left</span>
+        <span
+          title={`Target deadline: ${targetClock}`}
+          className="inline-flex items-center gap-1.5 text-xs font-black text-[#92400E] bg-[#FEF3C7] border border-[#FCD34D] px-2.5 py-1 rounded-md tabular-nums"
+        >
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span>{durationText} left</span>
+          <span className="text-[10px] font-semibold text-[#92400E]/75 ml-0.5">({targetClock})</span>
         </span>
       );
     } else {
-      const hours = Math.floor(diffMins / 60);
-      const mins = diffMins % 60;
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0D9488] bg-[#E8F3F1] border border-[#99F6E4] px-2.5 py-1 rounded-md tabular-nums">
-          <Clock className="h-3.5 w-3.5" />
-          <span>{hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}</span>
+        <span
+          title={`Target deadline: ${targetClock}`}
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0D9488] bg-[#E8F3F1] border border-[#99F6E4] px-2.5 py-1 rounded-md tabular-nums"
+        >
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span>{durationText} left</span>
+          <span className="text-[10px] font-semibold text-[#0D9488]/75 ml-0.5">({targetClock})</span>
         </span>
       );
     }
