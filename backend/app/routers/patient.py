@@ -338,7 +338,9 @@ def get_patient_ticket_status(
         bool(db.query(Ticket).filter(Ticket.id == ticket.id, Ticket.patient_feedback_comment != None).first())
     )
 
+    staff = ticket.assigned_staff
     return {
+        "id": ticket.id,
         "ticket_number": ticket.ticket_number,
         "room_number": ticket.room_number,
         "department_name": dept.name if dept else ticket.department_id,
@@ -346,6 +348,10 @@ def get_patient_ticket_status(
         "description": ticket.description,
         "status": ticket.status,
         "friendly_status": friendly_status,
+        "resolution_summary": ticket.resolution_summary,
+        "assigned_staff_name": staff.name if staff else None,
+        "assigned_staff_designation": staff.designation if staff else "Hospital Care Specialist",
+        "assigned_staff_avatar": staff.avatar_url if staff else None,
         "is_acknowledged": bool(ticket.acknowledged_at),
         "estimated_arrival_minutes": ticket.estimated_arrival_minutes,
         "estimated_arrival_at": ticket.estimated_arrival_at.isoformat() if ticket.estimated_arrival_at else None,

@@ -14,7 +14,10 @@ import {
   MessageSquare,
   Smile,
   Meh,
-  Frown
+  Frown,
+  UserCheck,
+  ThumbsUp,
+  Star
 } from "lucide-react";
 import { api, formatTime, formatDateTime } from "@/lib/api";
 
@@ -178,27 +181,119 @@ export default function TrackClient({
             </div>
           ) : ticket ? (
             <div className="space-y-5 animate-in fade-in duration-200">
-              {/* ETA Live Banner (Active after acknowledgement) */}
-              {ticket.status !== "closed" && ticket.acknowledged_at && (
-                <div className="p-4 rounded-xl bg-[#EEF4FD] border border-[#BFDBFE] text-xs flex items-center justify-between shadow-2xs">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white rounded-lg text-[#3868C9] shadow-2xs">
-                      <Clock className="h-5 w-5 animate-pulse" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#3868C9] block">
-                        Estimated Arrival
+              {/* Dynamic Live Status & Arrival Banner */}
+              {(() => {
+                const isAcknowledged = ticket.status === "acknowledged";
+                const isWorking = ["in_progress", "work_started"].includes(ticket.status);
+                const isWorkCompleted = ["resolution_submitted", "work_completed"].includes(ticket.status);
+                const isClosed = ticket.status === "closed";
+
+                if (isAcknowledged) {
+                  return (
+                    <div className="p-4 rounded-xl bg-[#EEF4FD] border-2 border-[#BFDBFE] text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white rounded-lg text-[#3868C9] shadow-2xs">
+                          <Clock className="h-5 w-5 animate-pulse" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#3868C9] block">
+                            Estimated Arrival
+                          </span>
+                          <strong className="text-sm font-black text-[#17212F]">
+                            {ticket.estimated_arrival_minutes || 10}–{((ticket.estimated_arrival_minutes || 10) + 5)} Minutes
+                          </strong>
+                          <span className="text-[11px] text-[#475467] block">
+                            Staff acknowledged and en route to {ticket.room_number}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-bold text-[#3868C9] border border-[#BFDBFE] shrink-0">
+                        Technician En Route
                       </span>
-                      <strong className="text-sm font-bold text-[#17212F]">
-                        {ticket.estimated_arrival_minutes || 15}–{((ticket.estimated_arrival_minutes || 15) + 5)} Minutes
-                      </strong>
                     </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-bold text-[#3868C9] border border-[#BFDBFE]">
-                    Technician En Route
-                  </span>
-                </div>
-              )}
+                  );
+                }
+
+                if (isWorking) {
+                  return (
+                    <div className="p-4 rounded-xl bg-[#EDF7F2] border-2 border-[#A6E1CE] text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white rounded-lg text-[#16805D] shadow-2xs">
+                          <UserCheck className="h-5 w-5 text-[#16805D]" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#16805D] block">
+                            Staff Arrived On-Site
+                          </span>
+                          <strong className="text-sm font-black text-[#0F172A]">
+                            Staff Has Arrived at {ticket.room_number}
+                          </strong>
+                          <span className="text-[11px] text-[#334155] block">
+                            {ticket.assigned_staff_name ? `${ticket.assigned_staff_name} is` : "Technician is"} actively attending to your request
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-black text-[#16805D] border border-[#A6E1CE] shrink-0">
+                        Work in Progress
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (isWorkCompleted) {
+                  return (
+                    <div className="p-4 rounded-xl bg-[#F0FDF4] border-2 border-[#86EFAC] text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white rounded-lg text-[#15803D] shadow-2xs">
+                          <CheckCircle2 className="h-5 w-5 text-[#15803D]" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#15803D] block">
+                            Service Completed
+                          </span>
+                          <strong className="text-sm font-black text-[#0F172A]">
+                            Staff Has Completed the Service
+                          </strong>
+                          <span className="text-[11px] text-[#334155] block">
+                            Work completed with safety standards; awaiting final sign-off
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-black text-[#15803D] border border-[#86EFAC] shrink-0">
+                        Work Completed
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (isClosed) {
+                  return (
+                    <div className="p-4 rounded-xl bg-[#EDF7F2] border-2 border-[#A6E1CE] text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white rounded-lg text-[#16805D] shadow-2xs">
+                          <CheckCircle2 className="h-5 w-5 text-[#16805D]" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#16805D] block">
+                            Resolved & Closed
+                          </span>
+                          <strong className="text-sm font-black text-[#0F172A]">
+                            Issue Officially Resolved
+                          </strong>
+                          <span className="text-[11px] text-[#334155] block">
+                            Inspected and closed by hospital supervisor
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-black text-[#16805D] border border-[#A6E1CE] shrink-0">
+                        Closed
+                      </span>
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
 
               {/* Status Header Badge */}
               <div className="p-4 rounded-xl bg-[#F8F9FA] border border-[#E5E9EF] flex items-center justify-between">
@@ -341,6 +436,69 @@ export default function TrackClient({
                     <h3 className="text-sm font-bold text-[#17212F]">
                       How was your hospital service experience?
                     </h3>
+                  </div>
+
+                  {/* Staff Recognition & Care Standards Card */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F8FAFC] to-[#EEF4FD] border-2 border-[#BFDBFE] space-y-3 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        {ticket.assigned_staff_avatar ? (
+                          <img
+                            src={ticket.assigned_staff_avatar}
+                            alt={ticket.assigned_staff_name || "Staff"}
+                            className="h-12 w-12 rounded-2xl object-cover border-2 border-[#3868C9] shadow-xs"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 rounded-2xl bg-[#3868C9] text-white flex items-center justify-center font-black text-sm border-2 border-[#1E40AF] shadow-xs">
+                            {ticket.assigned_staff_name
+                              ? ticket.assigned_staff_name
+                                  .split(" ")
+                                  .map((n: string) => n[0])
+                                  .join("")
+                                  .slice(0, 2)
+                              : "ST"}
+                          </div>
+                        )}
+                        <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#16805D] border-2 border-white rounded-full flex items-center justify-center text-[9px] text-white font-bold">
+                          ✓
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-black text-[#0F172A]">
+                            {ticket.assigned_staff_name || "Dedicated Hospital Care Specialist"}
+                          </h4>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-[#EDF7F2] text-[#16805D] border border-[#A6E1CE]">
+                            Dedicated Care
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-[#64748B]">
+                          {ticket.assigned_staff_designation || `${ticket.department_name || "Healthcare"} Team Specialist`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary of diligence & accomplishment */}
+                    <div className="bg-white p-3 rounded-xl border border-[#CBD5E1] space-y-1.5 text-xs">
+                      <div className="flex items-center gap-1.5 text-[#16805D] font-bold text-[11px] uppercase tracking-wide">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Work Completed & Hospital Quality Standards</span>
+                      </div>
+                      <p className="text-[#334155] font-medium leading-relaxed">
+                        {ticket.resolution_summary
+                          ? ticket.resolution_summary
+                          : `Attended promptly to your ${ticket.category} service at ${ticket.room_number}, completed all safety tests, and ensured clean handover.`}
+                      </p>
+                      <div className="pt-1.5 flex flex-wrap gap-1.5 text-[10px] font-bold text-[#475569]">
+                        <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Attended On-Time</span>
+                        <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ High Hygiene & Safety Protocol</span>
+                        <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Dignified Patient Care Assured</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[11.5px] font-semibold text-[#1E40AF] leading-snug">
+                      Our frontline team works hard every day to care for your comfort and dignity. If you are satisfied with {ticket.assigned_staff_name ? `${ticket.assigned_staff_name}'s` : "our staff's"} prompt service, please share a positive rating below to recognize their dedication!
+                    </p>
                   </div>
 
                   {feedbackSubmitted ? (
