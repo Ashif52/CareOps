@@ -36,7 +36,8 @@ import {
   RefreshCw,
   Pause,
   Trash2,
-  Volume2
+  Volume2,
+  MessageSquare
 } from "lucide-react";
 import { api, formatTime } from "@/lib/api";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
@@ -977,33 +978,61 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                 </div>
 
                 {/* Patient-Safe Confirmation Box */}
-                <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] text-left space-y-2">
-                  <div className="text-[11px] font-bold text-[#176B63] uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Official Confirmation Notice</span>
-                  </div>
-                  <p className="text-xs font-medium text-[#0F172A] leading-relaxed bg-white p-3 rounded-xl border border-[#CBD5E1]">
-                    &ldquo;Your complaint has been registered successfully. Your ticket reference is{" "}
-                    <strong className="font-mono text-[#176B63]">{submittedTicket.ticket_number}</strong>. Track the progress of your request here:{" "}
-                    <a
-                      href={
-                        submittedTicket.tracking_url ||
-                        (typeof window !== "undefined"
-                          ? `${window.location.origin}/track/${submittedTicket.ticket_number}`
-                          : `/track/${submittedTicket.ticket_number}`)
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[#176B63] underline font-bold break-all"
-                    >
-                      {submittedTicket.tracking_url ||
-                        (typeof window !== "undefined"
-                          ? `${window.location.origin}/track/${submittedTicket.ticket_number}`
-                          : `/track/${submittedTicket.ticket_number}`)}
-                    </a>
-                    .&rdquo;
-                  </p>
-                </div>
+                {(() => {
+                  const fullTrackingUrl = (submittedTicket.tracking_url && submittedTicket.tracking_url.startsWith("http"))
+                    ? submittedTicket.tracking_url
+                    : typeof window !== "undefined"
+                    ? `${window.location.origin}/track/${submittedTicket.ticket_number}${submittedTicket.tracking_url?.includes("?token=") ? `?token=${submittedTicket.tracking_url.split("?token=")[1]}` : ""}`
+                    : `https://care-ops-dusky.vercel.app/track/${submittedTicket.ticket_number}`;
+
+                  const waNoticeText = `*Official CareOps Hospital Confirmation Notice*\n\nYour complaint has been registered successfully.\n• Ticket Reference: *${submittedTicket.ticket_number}*\n• Service Location: *${submittedTicket.room_number}*\n• Department: *${submittedTicket.department}*\n\nTrack real-time resolution progress here:\n${fullTrackingUrl}`;
+
+                  const cleanPhone = patientContact.replace(/[^\d+]/g, "").replace(/^\+/, "");
+                  const waUrl = cleanPhone
+                    ? `https://api.whatsapp.com/send?phone=${encodeURIComponent(cleanPhone)}&text=${encodeURIComponent(waNoticeText)}`
+                    : `https://api.whatsapp.com/send?text=${encodeURIComponent(waNoticeText)}`;
+
+                  return (
+                    <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] text-left space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-bold text-[#176B63] uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span>Official Confirmation Notice</span>
+                        </div>
+                        {patientContact && (
+                          <span className="text-[10px] font-bold text-[#16805D] bg-white px-2 py-0.5 rounded-full border border-[#A6E1CE]">
+                            WhatsApp: {patientContact}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs font-medium text-[#0F172A] leading-relaxed bg-white p-3.5 rounded-xl border border-[#CBD5E1]">
+                        &ldquo;Your complaint has been registered successfully. Your ticket reference is{" "}
+                        <strong className="font-mono text-[#176B63]">{submittedTicket.ticket_number}</strong>. Track the progress of your request here:{" "}
+                        <a
+                          href={fullTrackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#176B63] underline font-bold break-all"
+                        >
+                          {fullTrackingUrl}
+                        </a>
+                        .&rdquo;
+                      </p>
+
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full py-2.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs font-black flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                        title="Receive / Open Official Notice in WhatsApp"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        <span>Open / Receive on WhatsApp</span>
+                      </a>
+                    </div>
+                  );
+                })()}
 
                 {/* Reference Card */}
                 <div className="bg-white p-5 rounded-3xl border-2 border-[#CBD5E1] shadow-xs text-left space-y-3">

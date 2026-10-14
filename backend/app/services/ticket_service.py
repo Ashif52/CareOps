@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.models import (
     Ticket, User, Department, Room, Evidence, AIVerificationJob,
     TicketNote, AuditLog, SLAPolicy
@@ -23,6 +24,11 @@ def to_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+def get_full_tracking_url(ticket: Ticket) -> str:
+    base_url = (getattr(settings, "FRONTEND_URL", "") or "https://care-ops-dusky.vercel.app").rstrip("/")
+    token_param = f"?token={ticket.patient_tracking_token}" if ticket.patient_tracking_token else ""
+    return f"{base_url}/track/{ticket.ticket_number}{token_param}"
 
 class TicketService:
     @staticmethod
@@ -142,7 +148,7 @@ class TicketService:
         db.refresh(ticket)
 
         # Trigger WhatsApp Event 1: Complaint created
-        tracking_url = f"/track/{ticket.ticket_number}?token={ticket.patient_tracking_token}"
+        tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_complaint_created(db, ticket, tracking_url)
             if assigned_staff:
@@ -202,7 +208,7 @@ class TicketService:
         db.refresh(ticket)
 
         # Trigger WhatsApp Event 3: Staff acknowledged
-        tracking_url = f"/track/{ticket.ticket_number}?token={ticket.patient_tracking_token or ''}"
+        tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_staff_acknowledged(db, ticket, eta_minutes, tracking_url)
         except Exception:
@@ -245,7 +251,7 @@ class TicketService:
         db.refresh(ticket)
 
         # Trigger WhatsApp Event 4: Work started
-        tracking_url = f"/track/{ticket.ticket_number}?token={ticket.patient_tracking_token or ''}"
+        tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_work_started(db, ticket, tracking_url)
         except Exception:
@@ -300,7 +306,7 @@ class TicketService:
         db.refresh(ticket)
 
         # Trigger WhatsApp Event 5: Work completed
-        tracking_url = f"/track/{ticket.ticket_number}?token={ticket.patient_tracking_token or ''}"
+        tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_work_completed(db, ticket, tracking_url)
         except Exception:
@@ -340,7 +346,7 @@ class TicketService:
         db.refresh(ticket)
 
         # Trigger WhatsApp Event 6: Ticket closed / Feedback invite
-        tracking_url = f"/track/{ticket.ticket_number}?token={ticket.patient_tracking_token or ''}"
+        tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_work_completed(db, ticket, tracking_url)
         except Exception:
