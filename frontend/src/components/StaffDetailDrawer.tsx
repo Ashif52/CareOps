@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   User,
@@ -22,9 +22,15 @@ import {
   History,
   Copy,
   Check,
-  Trash2
+  Trash2,
+  Edit3,
+  Sliders,
+  Sparkles,
+  Save,
+  RotateCcw
 } from "lucide-react";
 import { StaffMember, api, formatDateTime } from "@/lib/api";
+import { PermissionMatrixModal } from "@/components/common/PermissionMatrixModal";
 
 interface StaffDetailDrawerProps {
   staff: StaffMember | null;
@@ -39,7 +45,7 @@ interface StaffDetailDrawerProps {
 }
 
 export function StaffDetailDrawer({
-  staff,
+  staff: propStaff,
   onClose,
   onRefresh,
   currentUserRole,
@@ -49,8 +55,108 @@ export function StaffDetailDrawer({
   onActivateAccount,
   onOpenDeleteModal,
 }: StaffDetailDrawerProps) {
+  const [internalStaff, setInternalStaff] = useState<StaffMember | null>(null);
+  const staff = internalStaff || propStaff;
+
   const [activeTab, setActiveTab] = useState<"overview" | "access" | "security" | "audit">("overview");
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Role Assignment & Editing State
+  const [isEditingRole, setIsEditingRole] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<string>("staff");
+  const [selectedDesignation, setSelectedDesignation] = useState<string>("");
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [roleUpdateMessage, setRoleUpdateMessage] = useState<string | null>(null);
+  const [roleUpdateError, setRoleUpdateError] = useState<string | null>(null);
+
+  // Permission Matrix Modal State
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+
+  useEffect(() => {
+    setInternalStaff(null);
+    setIsEditingRole(false);
+    setRoleUpdateMessage(null);
+    setRoleUpdateError(null);
+    if (propStaff) {
+      setSelectedRole(propStaff.role);
+      setSelectedDesignation(propStaff.designation || "");
+    }
+  }, [propStaff]);
+
+  const AVAILABLE_ROLES = [
+    {
+      id: "staff",
+      name: "Department Staff Member",
+      badge: "Staff",
+      badgeBg: "bg-[#E0F2FE] text-[#0369A1] border-[#BAE6FD]",
+      desc: "Frontline operational personnel: executes assigned service orders, uploads evidence/photos, views room checklists."
+    },
+    {
+      id: "supervisor",
+      name: "Department Supervisor",
+      badge: "Supervisor",
+      badgeBg: "bg-[#FEF3C7] text-[#D97706] border-[#FCD34D]",
+      desc: "Departmental team leader: monitors SLA countdowns, reviews AI-verified tickets, coordinates technicians, handles service escalations."
+    },
+    {
+      id: "admin",
+      name: "Hospital Administrator",
+      badge: "Admin",
+      badgeBg: "bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7]",
+      desc: "Hospital administrator: full access across all 6 departments, staff accounts, QR room managers, SLA escalations, NPS, and Google reputation."
+    },
+    ...(currentUserRole === "superadmin"
+      ? [
+          {
+            id: "superadmin",
+            name: "Super Administrator",
+            badge: "Super Admin",
+            badgeBg: "bg-[#FCE7F3] text-[#9D174D] border-[#F472B6]",
+            desc: "Root system owner: manages administrative accounts, platform security controls, database maintenance, and permanent deletion."
+          }
+        ]
+      : [])
+  ];
+
+  const handleSaveRole = async () => {
+    if (!staff) return;
+    setIsUpdatingRole(true);
+    setRoleUpdateError(null);
+    setRoleUpdateMessage(null);
+    try {
+      const res: any = await api.updateStaff(staff.id, {
+        role: selectedRole,
+        designation: selectedDesignation.trim() || staff.designation
+      });
+      if (res && res.id) {
+        setInternalStaff(res);
+        setRoleUpdateMessage(`Role successfully updated to "${selectedRole.toUpperCase()}". Default role permissions applied.`);
+        setIsEditingRole(false);
+        onRefresh();
+        setTimeout(() => setRoleUpdateMessage(null), 5000);
+      } else {
+        throw new Error(res?.detail || "Failed to update role");
+      }
+    } catch (err: any) {
+      console.error("Failed to update role:", err);
+      setRoleUpdateError(err?.message || "Failed to update role. Please verify your permissions.");
+    } finally {
+      setIsUpdatingRole(false);
+    }
+  };
+
+  const handlePermissionsSaved = async () => {
+    if (!staff) return;
+    try {
+      const updated: any = await api.getStaffDetail(staff.id);
+      if (updated && updated.id) {
+        setInternalStaff(updated);
+      }
+    } catch (e) {
+      console.error("Failed to reload staff permissions:", e);
+    }
+    onRefresh();
+  };
 
   if (!staff) return null;
 
@@ -320,23 +426,157 @@ export function StaffDetailDrawer({
           {/* TAB 2: ACCESS & ROLES */}
           {activeTab === "access" && (
             <div className="space-y-6">
+              {roleUpdateMessage && (
+                <div className="p-3.5 bg-[#EDF7F2] border-2 border-[#A6E1CE] rounded-2xl flex items-center gap-2.5 text-xs font-bold text-[#16805D] animate-in fade-in">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-[#16805D]" />
+                  <span>{roleUpdateMessage}</span>
+                </div>
+              )}
+
+              {roleUpdateError && (
+                <div className="p-3.5 bg-[#FEF2F2] border-2 border-[#FECACA] rounded-2xl flex items-center gap-2.5 text-xs font-bold text-[#DC2626] animate-in fade-in">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-[#DC2626]" />
+                  <span>{roleUpdateError}</span>
+                </div>
+              )}
+
+              {/* Assigned Healthcare Role Card */}
               <div className="bg-[#F8FAFC] rounded-2xl border-2 border-[#CBD5E1] p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-black text-[#0F172A] flex items-center gap-2">
                     <Shield className="h-5 w-5 text-[#176B63]" />
                     <span>Assigned Healthcare Role</span>
                   </h3>
-                  <span className="text-xs font-black uppercase px-3 py-1 rounded-lg bg-[#E8F3F1] text-[#176B63] border border-[#99F6E4]">
-                    {staff.role}
-                  </span>
+                  
+                  {!isEditingRole ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase px-3 py-1 rounded-lg bg-[#E8F3F1] text-[#176B63] border border-[#99F6E4]">
+                        {staff.role}
+                      </span>
+                      {(currentUserRole === "admin" || currentUserRole === "superadmin") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedRole(staff.role);
+                            setSelectedDesignation(staff.designation || "");
+                            setIsEditingRole(true);
+                            setRoleUpdateError(null);
+                            setRoleUpdateMessage(null);
+                          }}
+                          className="px-3 py-1 rounded-lg bg-white hover:bg-[#F1F5F9] text-[#176B63] border-2 border-[#176B63] text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+                          title="Assign or Change Healthcare Role"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          <span>Edit / Reassign Role</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingRole(false)}
+                      className="px-3 py-1 rounded-lg bg-white hover:bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] text-xs font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
 
-                <div className="text-sm text-[#334155] font-semibold bg-white p-3.5 rounded-xl border border-[#CBD5E1]">
-                  Role ID: <strong className="text-[#0F172A] font-black capitalize">{staff.role}</strong>
-                  <p className="text-xs text-[#64748B] mt-1">
-                    Department Scope: <strong>{staff.department_name || staff.department_id || "Hospital Global"}</strong>
-                  </p>
-                </div>
+                {!isEditingRole ? (
+                  <div className="text-sm text-[#334155] font-semibold bg-white p-4 rounded-xl border border-[#CBD5E1] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs text-[#64748B] font-bold block">Active Role:</span>
+                        <strong className="text-[#0F172A] font-black capitalize text-base">{staff.role}</strong>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs text-[#64748B] font-bold block">Department Scope:</span>
+                        <strong className="text-[#0F172A] font-black">{staff.department_name || staff.department_id || "Hospital Global"}</strong>
+                      </div>
+                    </div>
+                    <p className="text-xs text-[#475569] font-medium pt-2 border-t border-[#F1F5F9] leading-relaxed">
+                      {AVAILABLE_ROLES.find((r) => r.id === staff.role)?.desc || "Configured hospital staff role with access permissions."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-white p-4 rounded-xl border-2 border-[#176B63] space-y-4 animate-in fade-in">
+                    <div>
+                      <label className="text-xs font-black text-[#0F172A] uppercase block mb-2">
+                        Select Healthcare Role to Assign <span className="text-[#DC2626]">*</span>
+                      </label>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {AVAILABLE_ROLES.map((roleOpt) => {
+                          const isSelected = selectedRole === roleOpt.id;
+                          return (
+                            <div
+                              key={roleOpt.id}
+                              onClick={() => setSelectedRole(roleOpt.id)}
+                              className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                                isSelected
+                                  ? "border-[#176B63] bg-[#E8F3F1]/40 shadow-xs"
+                                  : "border-[#E2E8F0] hover:border-[#CBD5E1] bg-[#F8FAFC]"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="roleOption"
+                                checked={isSelected}
+                                onChange={() => setSelectedRole(roleOpt.id)}
+                                className="mt-1 accent-[#176B63] h-4 w-4"
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-black text-[#0F172A]">
+                                    {roleOpt.name}
+                                  </span>
+                                  <span className={`text-[11px] font-black uppercase px-2 py-0.5 rounded-md border ${roleOpt.badgeBg}`}>
+                                    {roleOpt.badge}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-[#475569] mt-1 font-medium leading-relaxed">
+                                  {roleOpt.desc}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-black text-[#0F172A] uppercase block mb-1">
+                        Designation Title
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedDesignation}
+                        onChange={(e) => setSelectedDesignation(e.target.value)}
+                        placeholder="e.g. Senior Biomedical Specialist, Inpatient Nursing Lead"
+                        className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-semibold focus:outline-none focus:border-[#176B63]"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-[#E2E8F0]">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingRole(false)}
+                        disabled={isUpdatingRole}
+                        className="px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs font-bold text-[#475569] hover:bg-[#F8FAFC] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveRole}
+                        disabled={isUpdatingRole || !selectedRole}
+                        className="px-5 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        <span>{isUpdatingRole ? "Saving Role..." : "Save Assigned Role"}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Effective Granular Permissions */}
@@ -346,8 +586,25 @@ export function StaffDetailDrawer({
                     <ShieldCheck className="h-5 w-5 text-[#16805D]" />
                     <span>Effective Granular Permissions ({staff.permissions?.length || 0})</span>
                   </h3>
-                  <span className="text-xs font-bold text-[#64748B]">Enforced by Backend</span>
+                  
+                  <div className="flex items-center gap-2">
+                    {(currentUserRole === "admin" || currentUserRole === "superadmin") && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPermissionModal(true)}
+                        className="px-3 py-1 rounded-lg bg-[#EEF4FD] hover:bg-[#DBEAFE] text-[#2563EB] border border-[#BFDBFE] text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+                        title="Customize Specific Permissions in Matrix Modal"
+                      >
+                        <Sliders className="h-3.5 w-3.5" />
+                        <span>Customize Permissions</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                <p className="text-xs text-[#64748B] font-medium">
+                  Permissions automatically granted for the <strong>{staff.role}</strong> role. Use &quot;Customize Permissions&quot; to toggle specific operational rights.
+                </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                   {staff.permissions && staff.permissions.length > 0 ? (
@@ -525,6 +782,19 @@ export function StaffDetailDrawer({
           )}
         </div>
       </div>
+
+      {/* Granular Permission Matrix Modal */}
+      {showPermissionModal && staff && (
+        <PermissionMatrixModal
+          isOpen={true}
+          onClose={() => setShowPermissionModal(false)}
+          userId={staff.id}
+          userName={staff.name}
+          userRole={staff.role}
+          isSuperadminTarget={staff.role === "superadmin"}
+          onSaved={handlePermissionsSaved}
+        />
+      )}
     </div>
   );
 }

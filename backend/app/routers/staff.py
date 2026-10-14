@@ -366,32 +366,37 @@ def update_staff(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found")
 
     # Prevent Privilege Escalation
-    if payload.role and payload.role in ["admin", "super_admin"] and current_user.role not in ["admin", "super_admin"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Privilege escalation prevented: Only Super Administrators can grant Super Admin role."
-        )
+    if payload.role:
+        if payload.role in ["superadmin", "super_admin"] and current_user.role != "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Privilege escalation prevented: Only Super Administrators can grant Super Administrator role."
+            )
+        if payload.role == "admin" and current_user.role not in ["admin", "superadmin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Privilege escalation prevented: Only Administrators or Super Administrators can grant Admin role."
+            )
 
-    # Prevent demoting the last active Super Admin
-    if target_user.role in ["admin", "super_admin"] and payload.role and payload.role not in ["admin", "super_admin"]:
+    # Prevent demoting the last active Super Admin / Admin
+    if target_user.role in ["admin", "superadmin", "super_admin"] and payload.role and payload.role not in ["admin", "superadmin", "super_admin"]:
         active_admins = db.query(User).filter(
-            User.role.in_(["admin", "super_admin"]),
+            User.role.in_(["admin", "superadmin", "super_admin"]),
             User.is_active == True,
             User.id != target_user.id
         ).count()
         if active_admins == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Operation blocked: Cannot demote the last active Super Administrator in the hospital system."
+                detail="Operation blocked: Cannot demote the last active Administrator in the hospital system."
             )
 
-    # Enforce supervisor mobile number if updating role or phone
-    if (payload.role == "supervisor" or (payload.role is None and target_user.role == "supervisor")) and payload.phone is not None:
-        if len(payload.phone.strip()) < 7:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mobile phone number is mandatory for Supervisor accounts."
-            )
+    # Enforce supervisor mobile number only if a non-empty phone is being provided or was already provided
+    if payload.role == "supervisor" and payload.phone is not None and len(payload.phone.strip()) > 0 and len(payload.phone.strip()) < 7:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile phone number must be at least 7 digits for Supervisor accounts."
+        )
 
     updates = {}
     if payload.name:
@@ -407,8 +412,11 @@ def update_staff(
         target_user.designation = payload.designation.strip()
         updates["designation"] = target_user.designation
     if payload.role:
-        target_user.role = payload.role
-        updates["role"] = target_user.role
+        if payload.role != target_user.role:
+            target_user.role = payload.role
+            target_user.permissions_override = None  # Reset overrides to adopt new role defaults
+            updates["role"] = target_user.role
+            updates["permissions_override"] = "reset_to_role_defaults"
     if payload.supervisor_id is not None:
         target_user.supervisor_id = payload.supervisor_id if payload.supervisor_id > 0 else None
         updates["supervisor_id"] = target_user.supervisor_id
