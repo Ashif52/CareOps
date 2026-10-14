@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   History,
   Copy,
-  Check
+  Check,
+  Trash2
 } from "lucide-react";
 import { StaffMember, api, formatDateTime } from "@/lib/api";
 
@@ -34,6 +35,7 @@ interface StaffDetailDrawerProps {
   onOpenDeactivateModal: (staff: StaffMember) => void;
   onOpenResetPasswordModal: (staff: StaffMember) => void;
   onActivateAccount: (staff: StaffMember) => void;
+  onOpenDeleteModal?: (staff: StaffMember) => void;
 }
 
 export function StaffDetailDrawer({
@@ -45,6 +47,7 @@ export function StaffDetailDrawer({
   onOpenDeactivateModal,
   onOpenResetPasswordModal,
   onActivateAccount,
+  onOpenDeleteModal,
 }: StaffDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "access" | "security" | "audit">("overview");
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -446,7 +449,7 @@ export function StaffDetailDrawer({
                       className="px-4.5 py-2.5 rounded-xl bg-[#FEE2E2] hover:bg-[#FCD3D3] text-[#991B1B] border-2 border-[#FCA5A5] text-sm font-black flex items-center gap-2 cursor-pointer transition-all"
                     >
                       <UserX className="h-4.5 w-4.5" />
-                      <span>Deactivate Account</span>
+                      <span>Inactivate Account</span>
                     </button>
                   ) : (
                     <button
@@ -455,6 +458,17 @@ export function StaffDetailDrawer({
                     >
                       <UserCheck className="h-4.5 w-4.5" />
                       <span>Activate Account</span>
+                    </button>
+                  )}
+
+                  {currentUserRole === "superadmin" && onOpenDeleteModal && (
+                    <button
+                      onClick={() => onOpenDeleteModal(staff)}
+                      className="px-4.5 py-2.5 rounded-xl bg-[#FFF1F2] hover:bg-[#FFE4E6] text-[#E11D48] border-2 border-[#FDA4AF] text-sm font-black flex items-center gap-2 cursor-pointer transition-all"
+                      title="Permanently Delete Staff Member (SuperAdmin Only)"
+                    >
+                      <Trash2 className="h-4.5 w-4.5 text-[#E11D48]" />
+                      <span>Delete Account (SuperAdmin)</span>
                     </button>
                   )}
                 </div>

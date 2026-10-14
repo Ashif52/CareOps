@@ -765,3 +765,68 @@ def update_user_permissions_matrix(
         "effective_permissions": get_user_permissions(target)
     }
 
+# ----------------- 14. Permanent Staff Account Deletion (Superadmin Only) -----------------
+@router.delete("/{user_id}")
+def delete_staff_account(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Permanently deletes a hospital staff account.
+    Restricted strictly to System Superadmin.
+    Safely detaches assigned tickets and supervisor references.
+    """
+    if current_user.role != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Permanent deletion of personnel accounts is strictly restricted to System Superadmin. Hospital Administrators may inactivate accounts."
+        )
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found")
+
+    if current_user.id == target_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Security policy: Superadmin cannot delete their own active session account."
+        )
+
+    if target_user.role == "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Security policy: Root Superadmin accounts cannot be deleted."
+        )
+
+    # Detach tickets and subordinate supervisor linkages
+    db.query(Ticket).filter(Ticket.assigned_staff_id == user_id).update({"assigned_staff_id": None}, synchronize_session=False)
+    db.query(Ticket).filter(Ticket.assigned_supervisor_id == user_id).update({"assigned_supervisor_id": None}, synchronize_session=False)
+    db.query(User).filter(User.supervisor_id == user_id).update({"supervisor_id": None}, synchronize_session=False)
+
+    # Log immutable audit event
+    audit = AuditLog(
+        action="STAFF_DELETED_SUPERADMIN",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({
+            "deleted_user_id": target_user.id,
+            "deleted_user_name": target_user.name,
+            "deleted_employee_id": target_user.employee_id,
+            "deleted_email": target_user.email,
+            "deleted_role": target_user.role,
+            "deleted_department": target_user.department_id
+        })
+    )
+    db.add(audit)
+
+    db.delete(target_user)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Staff member {target_user.name} ({target_user.employee_id or target_user.email}) has been permanently deleted by Superadmin."
+    }
+
+

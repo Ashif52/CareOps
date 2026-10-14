@@ -31,7 +31,8 @@ import {
   Wrench,
   Stethoscope,
   Receipt,
-  Pill
+  Pill,
+  Trash2
 } from "lucide-react";
 import { Department, StaffMember, StaffMetrics, User as UserType, api, formatDateTime } from "@/lib/api";
 import { StaffDetailDrawer } from "@/components/StaffDetailDrawer";
@@ -84,7 +85,7 @@ export function StaffAccessManagementView({
 
   // Sensitive Action Confirmation State
   const [actionTargetStaff, setActionTargetStaff] = useState<StaffMember | null>(null);
-  const [actionType, setActionType] = useState<"unlock" | "deactivate" | "reset_password" | null>(null);
+  const [actionType, setActionType] = useState<"unlock" | "deactivate" | "reset_password" | "delete" | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
@@ -162,7 +163,14 @@ export function StaffAccessManagementView({
   const triggerDeactivate = (staff: StaffMember) => {
     setActionTargetStaff(staff);
     setActionType("deactivate");
-    setActionReason("Personnel on extended leave / duty rotation.");
+    setActionReason("Personnel marked inactive by administrator.");
+    setGeneratedTempPw(null);
+  };
+
+  const triggerDelete = (staff: StaffMember) => {
+    setActionTargetStaff(staff);
+    setActionType("delete");
+    setActionReason("Staff record permanently removed by Superadmin.");
     setGeneratedTempPw(null);
   };
 
@@ -198,8 +206,15 @@ export function StaffAccessManagementView({
         setActionType(null);
       } else if (actionType === "deactivate") {
         await api.deactivateStaff(actionTargetStaff.id, actionReason.trim());
-        setActionSuccessMessage(`Account ${actionTargetStaff.employee_id} (${actionTargetStaff.name}) deactivated.`);
+        setActionSuccessMessage(`Account ${actionTargetStaff.employee_id} (${actionTargetStaff.name}) has been marked inactive.`);
         setActionType(null);
+      } else if (actionType === "delete") {
+        await api.deleteStaff(actionTargetStaff.id);
+        setActionSuccessMessage(`Staff member ${actionTargetStaff.name} has been permanently deleted by Superadmin.`);
+        setActionType(null);
+        if (selectedStaff?.id === actionTargetStaff.id) {
+          setSelectedStaff(null);
+        }
       } else if (actionType === "reset_password") {
         const res = await api.resetStaffPassword(actionTargetStaff.id, { require_change: true });
         setGeneratedTempPw(res.temporary_password);
@@ -664,6 +679,39 @@ export function StaffAccessManagementView({
                               </button>
                             )}
 
+                            {/* Inactivate / Activate (Admin & Superadmin access) */}
+                            {staff.is_active && staff.account_status === "active" ? (
+                              <button
+                                onClick={() => triggerDeactivate(staff)}
+                                className="px-2.5 py-1 rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA] text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="Inactivate Staff Account (Admin Access)"
+                              >
+                                <UserX className="h-3.5 w-3.5 text-[#B91C1C]" />
+                                <span>Inactivate</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleActivateAccount(staff)}
+                                className="px-2.5 py-1 rounded-lg bg-[#EDF7F2] hover:bg-[#D7EFE4] text-[#16805D] border border-[#A6E1CE] text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="Activate Staff Account (Admin Access)"
+                              >
+                                <UserCheck className="h-3.5 w-3.5 text-[#16805D]" />
+                                <span>Activate</span>
+                              </button>
+                            )}
+
+                            {/* Delete (SuperAdmin Exclusive Access) */}
+                            {currentUser?.role === "superadmin" && (
+                              <button
+                                onClick={() => triggerDelete(staff)}
+                                className="px-2.5 py-1 rounded-lg bg-[#FFF1F2] hover:bg-[#FFE4E6] text-[#E11D48] border border-[#FDA4AF] text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="Permanently Delete Staff Member (SuperAdmin Exclusive)"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-[#E11D48]" />
+                                <span>Delete</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => setPermissionTargetUser(staff)}
                               className="p-1.5 rounded-lg border border-[#CBD5E1] text-[#3868C9] hover:text-[#17212F] hover:bg-[#EEF4FD] cursor-pointer"
@@ -792,6 +840,7 @@ export function StaffAccessManagementView({
         currentUserRole={currentUser?.role}
         onOpenUnlockModal={triggerUnlock}
         onOpenDeactivateModal={triggerDeactivate}
+        onOpenDeleteModal={triggerDelete}
         onOpenResetPasswordModal={triggerResetPassword}
         onActivateAccount={handleActivateAccount}
       />
@@ -820,7 +869,7 @@ export function StaffAccessManagementView({
         onClose={() => setShowSecurityModal(false)}
       />
 
-      {/* Action Confirmation Modal (Unlock / Deactivate / Reset Password) */}
+      {/* Action Confirmation Modal (Unlock / Inactivate / Delete / Reset Password) */}
       {actionType && actionTargetStaff && (
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
           <div
@@ -839,7 +888,12 @@ export function StaffAccessManagementView({
                 ) : actionType === "deactivate" ? (
                   <>
                     <UserX className="h-5 w-5 text-[#DC2626]" />
-                    <span>Deactivate Account</span>
+                    <span>Inactivate Staff Account</span>
+                  </>
+                ) : actionType === "delete" ? (
+                  <>
+                    <Trash2 className="h-5 w-5 text-[#E11D48]" />
+                    <span>Permanently Delete Staff (SuperAdmin)</span>
                   </>
                 ) : (
                   <>
@@ -884,11 +938,11 @@ export function StaffAccessManagementView({
             {actionType === "deactivate" && (
               <div className="space-y-3">
                 <p className="text-xs text-[#DC2626] font-semibold">
-                  Deactivating this account will immediately revoke authentication access. Historical ticket records will be preserved.
+                  Inactivating this account will immediately revoke login access. Historical tickets and evidence will remain intact.
                 </p>
                 <div>
                   <label className="text-xs font-bold text-[#334155] block mb-1">
-                    Administrative Reason for Deactivation <span className="text-[#DC2626]">*</span>
+                    Administrative Reason for Inactivation <span className="text-[#DC2626]">*</span>
                   </label>
                   <textarea
                     required
@@ -896,7 +950,31 @@ export function StaffAccessManagementView({
                     onChange={(e) => setActionReason(e.target.value)}
                     rows={2}
                     className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-medium focus:outline-none focus:border-[#176B63]"
-                    placeholder="Enter reason for deactivation..."
+                    placeholder="Enter reason for inactivation..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {actionType === "delete" && (
+              <div className="space-y-3">
+                <div className="p-3 bg-[#FFF1F2] border-2 border-[#FDA4AF] rounded-xl flex items-start gap-2.5">
+                  <AlertTriangle className="h-5 w-5 text-[#E11D48] shrink-0 mt-0.5" />
+                  <div className="text-xs text-[#9F1239] font-semibold leading-relaxed">
+                    <strong>SuperAdmin Exclusive Action:</strong> You are about to permanently delete <strong>{actionTargetStaff.name}</strong> ({actionTargetStaff.employee_id || actionTargetStaff.email}). All assigned tickets will be safely unlinked. This action CANNOT be reversed.
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-[#334155] block mb-1">
+                    Administrative Reason for Permanent Deletion <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <textarea
+                    required
+                    value={actionReason}
+                    onChange={(e) => setActionReason(e.target.value)}
+                    rows={2}
+                    className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-medium focus:outline-none focus:border-[#E11D48]"
+                    placeholder="Enter compliance justification for audit log..."
                   />
                 </div>
               </div>
@@ -938,12 +1016,20 @@ export function StaffAccessManagementView({
                   onClick={executeSensitiveAction}
                   disabled={isSubmittingAction || (actionType !== "reset_password" && !actionReason.trim())}
                   className={`px-5 py-2 rounded-xl text-white text-xs font-black shadow-sm cursor-pointer disabled:opacity-50 ${
-                    actionType === "deactivate"
+                    actionType === "delete"
+                      ? "bg-[#E11D48] hover:bg-[#BE123C]"
+                      : actionType === "deactivate"
                       ? "bg-[#DC2626] hover:bg-[#B91C1C]"
                       : "bg-[#176B63] hover:bg-[#10574F]"
                   }`}
                 >
-                  {isSubmittingAction ? "Processing..." : "Confirm Action"}
+                  {isSubmittingAction
+                    ? "Processing..."
+                    : actionType === "delete"
+                    ? "Permanently Delete"
+                    : actionType === "deactivate"
+                    ? "Inactivate Account"
+                    : "Confirm Action"}
                 </button>
               )}
             </div>

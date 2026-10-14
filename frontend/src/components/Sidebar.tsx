@@ -61,6 +61,11 @@ export function Sidebar({
         icon: UserCheck,
       },
       {
+        id: "departments",
+        label: "Hospital Staff Directory",
+        icon: Building2,
+      },
+      {
         id: "superadmin-security",
         label: "Security Settings",
         icon: Lock,

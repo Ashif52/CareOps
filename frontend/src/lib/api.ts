@@ -712,6 +712,8 @@ export const api = {
     fetchWithAuth(`/staff/${id}/activate`, { method: "POST" }),
   deactivateStaff: (id: number, reason: string) =>
     fetchWithAuth(`/staff/${id}/deactivate`, { method: "POST", body: JSON.stringify({ reason }) }),
+  deleteStaff: (id: number) =>
+    fetchWithAuth(`/staff/${id}`, { method: "DELETE" }),
   unlockStaff: (id: number, reason: string) =>
     fetchWithAuth(`/staff/${id}/unlock`, { method: "POST", body: JSON.stringify({ reason }) }),
   resetStaffPassword: (id: number, data: { temporary_password?: string; require_change?: boolean }) =>
