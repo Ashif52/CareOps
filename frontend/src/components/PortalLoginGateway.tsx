@@ -15,7 +15,8 @@ import {
   Building2,
   CheckCircle2,
   UserPlus,
-  Loader2
+  Loader2,
+  QrCode
 } from "lucide-react";
 import { api, setStoredToken, User as UserType } from "@/lib/api";
 
@@ -26,15 +27,16 @@ interface PortalLoginGatewayProps {
 
 export function PortalLoginGateway({
   onLoginSuccess,
+  onEnterPatientPortal,
 }: PortalLoginGatewayProps) {
   const [authMode, setAuthMode] = useState<"signin" | "register">("signin");
-  const [email, setEmail] = useState("admin@careops.hospital");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Sign In to Workspace");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activePersona, setActivePersona] = useState<string>("admin");
+  const [activePersona, setActivePersona] = useState<string>("");
 
   // Pre-warm the backend as soon as the user opens the login screen
   useEffect(() => {
@@ -65,9 +67,9 @@ export function PortalLoginGateway({
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
-  const [regRole, setRegRole] = useState("admin");
+  const [regRole, setRegRole] = useState("staff");
   const [regDepartment, setRegDepartment] = useState("maintenance");
-  const [regDesignation, setRegDesignation] = useState("Hospital Operations Lead");
+  const [regDesignation, setRegDesignation] = useState("Hospital Operations Specialist");
   const [showRegPassword, setShowRegPassword] = useState(false);
 
   const demoPersonas = [
@@ -128,6 +130,30 @@ export function PortalLoginGateway({
     setPassword("password123");
     setActivePersona(persona.id);
     setErrorMsg(null);
+  };
+
+  const handleDirectPersonaLogin = async (persona: typeof demoPersonas[0]) => {
+    setEmail(persona.email);
+    setPassword("password123");
+    setActivePersona(persona.id);
+    setErrorMsg(null);
+    setIsLoading(true);
+    setLoadingText(`Signing in as ${persona.name}...`);
+
+    try {
+      const res = await api.login({
+        email: persona.email.trim().toLowerCase(),
+        password: "password123",
+      });
+
+      setStoredToken(res.access_token);
+      const landingTab = res.user.role === "superadmin" ? "superadmin-admins" : res.user.role === "staff" ? "my-department" : "overview";
+      onLoginSuccess(res.user, landingTab);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to sign in. Please verify credentials.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -217,9 +243,21 @@ export function PortalLoginGateway({
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-[#0F766E] bg-[#E8F3F1] px-3 py-1.5 rounded-full border border-[#99F6E4] shadow-2xs">
-          <span className="h-2 w-2 rounded-full bg-[#0D9488] animate-pulse" />
-          <span>NABH / HIPAA Protected Portal</span>
+        <div className="flex items-center gap-2">
+          {onEnterPatientPortal && (
+            <button
+              type="button"
+              onClick={() => onEnterPatientPortal()}
+              className="px-3.5 py-1.5 rounded-full bg-[#176B63] hover:bg-[#125852] text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <QrCode className="h-3.5 w-3.5" />
+              <span>Bedside Patient Portal</span>
+            </button>
+          )}
+          <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-[#0F766E] bg-[#E8F3F1] px-3 py-1.5 rounded-full border border-[#99F6E4] shadow-2xs">
+            <span className="h-2 w-2 rounded-full bg-[#0D9488] animate-pulse" />
+            <span>NABH / HIPAA Protected</span>
+          </div>
         </div>
       </header>
 
@@ -243,6 +281,29 @@ export function PortalLoginGateway({
 
           {/* Feature Highlights */}
           <div className="space-y-2.5 pt-1">
+            {onEnterPatientPortal && (
+              <div
+                onClick={() => onEnterPatientPortal()}
+                className="p-3.5 rounded-xl bg-gradient-to-br from-[#E8F3F1] to-[#D1ECE7] border-2 border-[#176B63]/40 hover:border-[#176B63] transition-all cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[#176B63] font-black text-xs uppercase tracking-wide">
+                    <QrCode className="h-4 w-4" />
+                    <span>Bedside Patient Portal (QR Mode)</span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-white text-[#176B63] border border-[#176B63]/20 shadow-2xs">
+                    No Sign-In Required
+                  </span>
+                </div>
+                <p className="text-xs text-[#334155] font-medium mt-1 leading-relaxed">
+                  Looking to lodge a room request or test QR bedside complaint triage? Click here to test the live patient experience.
+                </p>
+                <div className="mt-2 text-xs font-black text-[#176B63] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                  <span>Enter Bedside Patient Portal →</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-start gap-3 p-3 rounded-xl bg-white/80 border border-[#CBD5E1] shadow-2xs">
               <div className="p-2 rounded-lg bg-[#E8F3F1] text-[#176B63] shrink-0 mt-0.5">
                 <ShieldCheck className="h-4 w-4" />
@@ -306,6 +367,28 @@ export function PortalLoginGateway({
                 <span>Create Account</span>
               </button>
             </div>
+
+            {authMode === "signin" && (
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => handleDirectPersonaLogin(demoPersonas[1])}
+                className="w-full p-3 rounded-xl bg-gradient-to-r from-[#176B63] to-[#0D9488] hover:from-[#125852] hover:to-[#0B7A70] text-white font-extrabold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-between cursor-pointer group disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-white/20 text-white">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-[10px] uppercase tracking-wider text-[#99F6E4] font-black">🚀 1-Click Instant Access</div>
+                    <div className="text-xs sm:text-sm font-bold">Sign In as Admin (Dr. Alistair Vance)</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-[#99F6E4] group-hover:translate-x-1 transition-transform">
+                  <span>Enter Dashboard →</span>
+                </div>
+              </button>
+            )}
 
             <div className="space-y-1">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] tracking-tight">
@@ -516,9 +599,11 @@ export function PortalLoginGateway({
             <div className="pt-4 border-t border-[#E2E8F0] space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold text-[#475569] uppercase tracking-wider">
-                  Test Credentials (Click to Pre-fill):
+                  1-Click Role Logins (Tap to Sign In):
                 </span>
-                <span className="text-[11px] font-semibold text-[#176B63]">1-Click Autofill</span>
+                <span className="text-[11px] font-bold text-[#176B63] bg-[#E8F3F1] px-2 py-0.5 rounded-full border border-[#A7D7D1]">
+                  Instant Access
+                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -528,14 +613,15 @@ export function PortalLoginGateway({
                     <button
                       key={p.id}
                       type="button"
+                      disabled={isLoading}
                       onClick={() => {
                         setAuthMode("signin");
-                        handleSelectPersona(p);
+                        handleDirectPersonaLogin(p);
                       }}
-                      className={`text-left p-2.5 rounded-xl border transition-all flex flex-col justify-between gap-1 cursor-pointer ${
+                      className={`text-left p-2.5 rounded-xl border transition-all flex flex-col justify-between gap-1 cursor-pointer disabled:opacity-50 ${
                         isSelected
                           ? "border-[#176B63] bg-[#E8F3F1] ring-2 ring-[#176B63]/30"
-                          : "border-[#E2E8F0] hover:border-[#94A3B8] hover:bg-[#F8FAFC]"
+                          : "border-[#E2E8F0] hover:border-[#176B63] hover:bg-[#F0FDF4] hover:shadow-2xs"
                       }`}
                     >
                       <div className="flex items-center justify-between w-full">
@@ -546,9 +632,14 @@ export function PortalLoginGateway({
                           {p.badge}
                         </span>
                       </div>
-                      <span className="text-[11px] text-[#64748B] font-mono truncate">
-                        {p.email}
-                      </span>
+                      <div className="flex items-center justify-between w-full text-[11px]">
+                        <span className="text-[#64748B] font-mono truncate">
+                          {p.email}
+                        </span>
+                        <span className="text-[10px] font-bold text-[#176B63] shrink-0">
+                          Sign In →
+                        </span>
+                      </div>
                     </button>
                   );
                 })}
