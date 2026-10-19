@@ -1,15 +1,21 @@
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.database import engine, Base
 from app.seed import seed_database
 from app.services.sla_engine import SLAEngine
+from app.services.storage_service import StorageService
 
 # Routers
 from app.routers import (
@@ -20,6 +26,20 @@ from app.migrations import run_migrations
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("careops.main")
+
+# Rate limiter setup
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
 
 async def sla_background_worker():
     """Background persistent worker that scans tickets and triggers SLA escalation & reminders"""
@@ -64,23 +84,43 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Enterprise AI-Powered Hospital Service Request, SLA Monitoring & Verification Platform",
+    docs_url="/docs" if settings.DEBUG_MODE else None,
+    redoc_url="/redoc" if settings.DEBUG_MODE else None,
+    openapi_url="/openapi.json" if settings.DEBUG_MODE else None,
     lifespan=lifespan
 )
 
-# CORS
+# Attach rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Middlewares
+app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
-    allow_origin_regex=r"^https?://.*$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}|.*\.vercel\.app|.*\.onrender\.com|.*\.railway\.app)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Mount private media uploads directory
-uploads_path = Path(settings.UPLOAD_DIR)
-uploads_path.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
+# Safe file access endpoint with path traversal prevention
+@app.get("/uploads/{subfolder}/{filename}")
+async def serve_upload(subfolder: str, filename: str):
+    clean_subfolder = StorageService._sanitize_subfolder(subfolder)
+    clean_filename = Path(filename).name
+    file_path = (Path(settings.UPLOAD_DIR) / clean_subfolder / clean_filename).resolve()
+    base_dir = Path(settings.UPLOAD_DIR).resolve()
+    
+    # Enforce directory containment
+    if not str(file_path).startswith(str(base_dir)):
+        raise HTTPException(status_code=403, detail="Forbidden file access")
+    if not file_path.is_file() or not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(file_path)
 
 # Include Routers under API_V1_STR
 app.include_router(auth.router, prefix=settings.API_V1_STR)
@@ -100,19 +140,11 @@ app.include_router(google_reviews.integrations_router, prefix=settings.API_V1_ST
 app.include_router(nps.router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health")
-def health_check(heal: bool = False):
-    migration_res = "skipped"
-    if heal:
-        try:
-            run_migrations()
-            seed_database()
-            migration_res = "success"
-        except Exception as e:
-            migration_res = f"failed: {e}"
+def health_check():
     return {
         "status": "healthy",
         "service": "CareOps AI Backend",
         "version": settings.VERSION,
-        "migration": migration_res,
         "engine": "FastAPI + SQLAlchemy + Asyncio SLA Engine + Computer Vision Analyzer"
     }
+

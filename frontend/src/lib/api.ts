@@ -5,15 +5,10 @@ export function getApiBase(): string {
   }
 
   if (typeof window !== "undefined") {
-    const hostname = window.location.hostname;
-    // Local LAN network IP (e.g. 192.168.x.x or 10.x.x.x) for testing mobile QR scanner on same WiFi
-    if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1" && /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)) {
-      return `http://${hostname}:8000/api`;
-    }
-    // If deployed on custom domain with reverse proxy or same-origin routing
-    if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
-      return `${window.location.origin}/api`;
-    }
+    // In any browser context (desktop localhost, mobile LAN IP like 192.168.x.x, or deployed domain),
+    // always route requests through the same-origin Next.js reverse proxy (/api).
+    // This eliminates CORS blocks, mobile port 8000 firewall rejections, and infinite spinning.
+    return `${window.location.origin}/api`;
   }
   return "http://127.0.0.1:8000/api";
 }
@@ -21,6 +16,9 @@ export function getApiBase(): string {
 export function getBackendBase(): string {
   if (process.env.NEXT_PUBLIC_BACKEND_URL) {
     return process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/+$/, "");
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin;
   }
   const apiUrl = getApiBase();
   return apiUrl.replace(/\/api\/?$/, "");
@@ -841,7 +839,7 @@ export const api = {
   getSuperAdminAuditLogs: () =>
     fetchWithAuth("/system/audit-logs"),
   getPermissionMatrixCatalog: (isSuperadmin: boolean = false) =>
-    fetchWithAuth(`/system/permissions/catalog?is_superadmin=${isSuperadmin}`),
+    fetchWithAuth(`/staff/permissions/catalog?is_superadmin=${isSuperadmin}`),
 
   // ============================================================================
   // STAFF, SUPERVISORS & PERMISSIONS MATRIX (SECTION 3 & SECTION 9)
