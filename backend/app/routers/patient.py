@@ -29,12 +29,18 @@ router = APIRouter(prefix="/patient", tags=["Patient QR Portal"])
 
 # In-memory idempotency cache: { idempotency_key: { "response": dict, "created_at": datetime } }
 _IDEMPOTENCY_CACHE: Dict[str, dict] = {}
+_MAX_IDEMPOTENCY_CACHE_ENTRIES = 5000
 
 def _clean_idempotency_cache():
     now = datetime.now(timezone.utc)
     expired = [k for k, v in _IDEMPOTENCY_CACHE.items() if (now - v["created_at"]).total_seconds() > 300]
     for k in expired:
         _IDEMPOTENCY_CACHE.pop(k, None)
+    if len(_IDEMPOTENCY_CACHE) > _MAX_IDEMPOTENCY_CACHE_ENTRIES:
+        sorted_keys = sorted(_IDEMPOTENCY_CACHE.keys(), key=lambda k: _IDEMPOTENCY_CACHE[k]["created_at"])
+        for k in sorted_keys[:1000]:
+            _IDEMPOTENCY_CACHE.pop(k, None)
+
 
 @router.get("/room/{qr_token}")
 def get_room_by_token(qr_token: str, db: Session = Depends(get_db)):
@@ -119,7 +125,12 @@ def verify_patient_session(payload: PatientVerifySessionRequest, db: Session = D
         raise HTTPException(status_code=400, detail="Please enter a valid mobile phone number.")
 
     # Validates standard hospital demo/sandbox OTP (123456) or approved verification code
-    if payload.otp_code.strip() not in ["123456", "999888", "000000"]:
+    if not settings.DEBUG_MODE and payload.otp_code.strip() in ["123456", "999888", "000000"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Sandbox OTP codes are disabled in production mode. Use verified SMS OTP."
+        )
+    elif payload.otp_code.strip() not in ["123456", "999888", "000000"]:
         raise HTTPException(status_code=400, detail="Invalid or expired verification code. Use demo code 123456.")
 
     room_num = None
@@ -306,6 +317,10 @@ def get_patient_ticket_status(
     if ticket.patient_tracking_token and token:
         if token.strip() != ticket.patient_tracking_token:
             logger.warning(f"Patient tracking token mismatch for ticket {clean_num}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid or unauthorized tracking token for this ticket."
+            )
         
     dept = db.query(Department).filter(Department.id == ticket.department_id).first()
     
@@ -339,7 +354,7 @@ def get_patient_ticket_status(
     )
 
     staff = ticket.assigned_staff
-    return {
+    res = {
         "id": ticket.id,
         "ticket_number": ticket.ticket_number,
         "room_number": ticket.room_number,
@@ -349,15 +364,13 @@ def get_patient_ticket_status(
         "status": ticket.status,
         "friendly_status": friendly_status,
         "resolution_summary": ticket.resolution_summary,
-        "assigned_staff_name": staff.name if staff else None,
-        "assigned_staff_designation": staff.designation if staff else "Hospital Care Specialist",
-        "assigned_staff_avatar": staff.avatar_url if staff else None,
         "is_acknowledged": bool(ticket.acknowledged_at),
         "estimated_arrival_minutes": ticket.estimated_arrival_minutes,
         "estimated_arrival_at": ticket.estimated_arrival_at.isoformat() if ticket.estimated_arrival_at else None,
         "eta_display": eta_display,
         "eta_updated_at": ticket.acknowledged_at.isoformat() if ticket.acknowledged_at else None,
         "is_eligible_for_feedback": is_eligible_for_feedback,
+        "ready_for_feedback": is_eligible_for_feedback,
         "has_feedback_recorded": has_feedback_recorded,
         "created_at": ticket.created_at.isoformat(),
         "assigned_at": ticket.assigned_at.isoformat() if getattr(ticket, "assigned_at", None) else None,
@@ -378,6 +391,11 @@ def get_patient_ticket_status(
             for note in public_notes
         ]
     }
+    if staff:
+        res["assigned_staff_name"] = staff.name
+        res["assigned_staff_designation"] = staff.designation if staff.designation else "Hospital Care Specialist"
+        res["assigned_staff_avatar"] = staff.avatar_url
+    return res
 
 @router.get("/ticket/{ticket_number}/stream")
 async def stream_patient_ticket_status(ticket_number: str, db: Session = Depends(get_db)):

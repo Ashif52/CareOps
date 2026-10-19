@@ -37,7 +37,9 @@ import {
   Pause,
   Trash2,
   Volume2,
-  MessageSquare
+  MessageSquare,
+  ThumbsUp,
+  Star
 } from "lucide-react";
 import { api, formatTime } from "@/lib/api";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
@@ -120,17 +122,36 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string>("");
   const [submittedTicket, setSubmittedTicket] = useState<{
+    id?: number;
     ticket_number: string;
     department: string;
     status: string;
     room_number: string;
+    category?: string;
     created_at: string;
     friendly_status?: string;
     acknowledged_at?: string | null;
     in_progress_at?: string | null;
+    work_started_at?: string | null;
+    work_completed_at?: string | null;
     closed_at?: string | null;
+    estimated_arrival_minutes?: number | null;
     tracking_url?: string;
+    tracking_token?: string;
+    resolution_summary?: string | null;
+    assigned_staff_name?: string | null;
+    assigned_staff_designation?: string | null;
+    assigned_staff_avatar?: string | null;
+    ready_for_feedback?: boolean;
+    is_eligible_for_feedback?: boolean;
   } | null>(null);
+
+  // Patient Experience Feedback State on Bedside Screen
+  const [selectedEmoji, setSelectedEmoji] = useState<"happy" | "okay" | "unhappy" | null>(null);
+  const [npsScore, setNpsScore] = useState<number | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const [showQRModal, setShowQRModal] = useState(false);
 
@@ -179,11 +200,21 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
           prev
             ? {
                 ...prev,
+                id: live.id || prev.id,
                 status: live.status,
                 friendly_status: live.friendly_status,
                 acknowledged_at: live.acknowledged_at,
                 in_progress_at: live.in_progress_at,
+                work_started_at: live.work_started_at,
+                work_completed_at: live.work_completed_at,
                 closed_at: live.closed_at,
+                estimated_arrival_minutes: live.estimated_arrival_minutes,
+                resolution_summary: live.resolution_summary,
+                assigned_staff_name: live.assigned_staff_name,
+                assigned_staff_designation: live.assigned_staff_designation,
+                assigned_staff_avatar: live.assigned_staff_avatar,
+                ready_for_feedback: live.ready_for_feedback || live.is_eligible_for_feedback,
+                is_eligible_for_feedback: live.is_eligible_for_feedback,
               }
             : null
         );
@@ -558,19 +589,50 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
       });
 
       setSubmittedTicket({
+        id: res.id,
         ticket_number: res.ticket_number,
         department: res.department,
         status: res.status,
         room_number: res.room_number,
+        category: categoryName,
         created_at: res.created_at,
         friendly_status: "Received & Queued",
         tracking_url: res.tracking_url,
+        tracking_token: res.token,
       });
       setStep("confirmation");
     } catch (err: any) {
       alert(`Submission error: ${err.message}`);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmoji) {
+      alert("Please select one of the satisfaction emojis (Unhappy, Okay, or Happy).");
+      return;
+    }
+    if (!submittedTicket?.id) {
+      alert("Ticket details are loading. Please wait a moment.");
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+    try {
+      await api.submitNPSFeedback({
+        ticket_id: submittedTicket.id,
+        tracking_token: submittedTicket.tracking_token || undefined,
+        emoji_rating: selectedEmoji,
+        nps_score: npsScore !== null ? npsScore : undefined,
+        feedback_comment: feedbackComment.trim() || undefined,
+      });
+      setFeedbackSubmitted(true);
+    } catch (err: any) {
+      alert(`Failed to record feedback: ${err.message || err}`);
+    } finally {
+      setIsSubmittingFeedback(false);
     }
   };
 
@@ -977,6 +1039,126 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                   </p>
                 </div>
 
+                {/* Dynamic Arrival Status Banner */}
+                {(() => {
+                  const isAcknowledged =
+                    submittedTicket.status === "acknowledged" ||
+                    (Boolean(submittedTicket.acknowledged_at) &&
+                      submittedTicket.status === "submitted");
+                  const isWorking = ["in_progress", "work_started"].includes(submittedTicket.status);
+                  const isWorkCompleted = [
+                    "resolution_submitted",
+                    "work_completed",
+                  ].includes(submittedTicket.status);
+                  const isClosed = submittedTicket.status === "closed";
+
+                  if (isAcknowledged) {
+                    return (
+                      <div className="p-4 rounded-2xl bg-[#EBF3FD] border-2 border-[#BFDBFE] text-xs flex items-center justify-between text-left shadow-2xs animate-in fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white rounded-xl text-[#3868C9] shadow-2xs">
+                            <Clock className="h-5 w-5 text-[#3868C9]" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#3868C9] block">
+                              Estimated Arrival
+                            </span>
+                            <strong className="text-sm font-black text-[#17212F]">
+                              {submittedTicket.estimated_arrival_minutes || 10}–{((submittedTicket.estimated_arrival_minutes || 10) + 5)} Minutes
+                            </strong>
+                            <span className="text-[11px] text-[#475467] block">
+                              Staff acknowledged and en route to {submittedTicket.room_number}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-bold text-[#3868C9] border border-[#BFDBFE] shrink-0">
+                          Technician En Route
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  if (isWorking) {
+                    return (
+                      <div className="p-4 rounded-2xl bg-[#EDF7F2] border-2 border-[#A6E1CE] text-xs flex items-center justify-between text-left shadow-2xs animate-in fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white rounded-xl text-[#16805D] shadow-2xs">
+                            <UserCheck className="h-5 w-5 text-[#16805D]" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#16805D] block">
+                              Staff Arrived On-Site
+                            </span>
+                            <strong className="text-sm font-black text-[#0F172A]">
+                              Staff Has Arrived at {submittedTicket.room_number}
+                            </strong>
+                            <span className="text-[11px] text-[#334155] block">
+                              {submittedTicket.assigned_staff_name ? `${submittedTicket.assigned_staff_name} is` : "Technician is"} actively attending to your request
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-black text-[#16805D] border border-[#A6E1CE] shrink-0">
+                          Work in Progress
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  if (isWorkCompleted) {
+                    return (
+                      <div className="p-4 rounded-2xl bg-[#F0FDF4] border-2 border-[#86EFAC] text-xs flex items-center justify-between text-left shadow-2xs animate-in fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white rounded-xl text-[#15803D] shadow-2xs">
+                            <CheckCircle2 className="h-5 w-5 text-[#15803D]" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#15803D] block">
+                              Service Completed
+                            </span>
+                            <strong className="text-sm font-black text-[#0F172A]">
+                              Staff Has Completed the Service
+                            </strong>
+                            <span className="text-[11px] text-[#334155] block">
+                              Work completed with safety standards; awaiting final sign-off
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-black text-[#15803D] border border-[#86EFAC] shrink-0">
+                          Work Completed
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  if (isClosed) {
+                    return (
+                      <div className="p-4 rounded-2xl bg-[#EDF7F2] border-2 border-[#A6E1CE] text-xs flex items-center justify-between text-left shadow-2xs animate-in fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white rounded-xl text-[#16805D] shadow-2xs">
+                            <CheckCircle2 className="h-5 w-5 text-[#16805D]" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#16805D] block">
+                              Resolved & Closed
+                            </span>
+                            <strong className="text-sm font-black text-[#0F172A]">
+                              Issue Officially Resolved
+                            </strong>
+                            <span className="text-[11px] text-[#334155] block">
+                              Inspected and closed by hospital supervisor
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-black text-[#16805D] border border-[#A6E1CE] shrink-0">
+                          Closed
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
+
                 {/* Patient-Safe Confirmation Box */}
                 {(() => {
                   const fullTrackingUrl = (submittedTicket.tracking_url && submittedTicket.tracking_url.startsWith("http"))
@@ -1096,22 +1278,37 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                       {
                         label: "3. Staff Acknowledged & En Route",
                         desc: "Staff member accepted the task",
-                        active: ["acknowledged", "in_progress", "resolution_submitted", "closed"].includes(
-                          submittedTicket.status
-                        ),
+                        active: [
+                          "acknowledged",
+                          "in_progress",
+                          "work_started",
+                          "work_completed",
+                          "resolution_submitted",
+                          "closed",
+                        ].includes(submittedTicket.status),
                         time: submittedTicket.acknowledged_at,
                       },
                       {
                         label: "4. Work in Progress",
                         desc: "Repairs / service underway at room",
-                        active: ["in_progress", "resolution_submitted", "closed"].includes(submittedTicket.status),
-                        time: submittedTicket.in_progress_at,
+                        active: [
+                          "in_progress",
+                          "work_started",
+                          "work_completed",
+                          "resolution_submitted",
+                          "closed",
+                        ].includes(submittedTicket.status),
+                        time: submittedTicket.in_progress_at || submittedTicket.work_started_at,
                       },
                       {
                         label: "5. Resolved & Closed",
                         desc: "Verified by hospital supervisor",
-                        active: submittedTicket.status === "closed",
-                        time: submittedTicket.closed_at,
+                        active: [
+                          "closed",
+                          "work_completed",
+                          "resolution_submitted",
+                        ].includes(submittedTicket.status),
+                        time: submittedTicket.closed_at || submittedTicket.work_completed_at,
                       },
                     ].map((m, idx) => (
                       <div key={idx} className="relative flex items-start gap-3">
@@ -1143,6 +1340,196 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                     ))}
                   </div>
                 </div>
+
+                {/* Staff Recognition & Positive Feedback Card (when completed or closed) */}
+                {(submittedTicket.ready_for_feedback ||
+                  ["closed", "work_completed", "resolution_submitted"].includes(submittedTicket.status)) && (
+                  <div className="bg-white rounded-3xl border-2 border-[#176B63] p-5 shadow-sm space-y-4 text-left">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-[#176B63]" />
+                      <h3 className="text-sm font-black text-[#0F172A]">
+                        How was your hospital service experience?
+                      </h3>
+                    </div>
+
+                    {/* Staff Recognition & Care Standards Card */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F8FAFC] to-[#EEF4FD] border-2 border-[#BFDBFE] space-y-3 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          {submittedTicket.assigned_staff_avatar ? (
+                            <img
+                              src={submittedTicket.assigned_staff_avatar}
+                              alt={submittedTicket.assigned_staff_name || "Staff"}
+                              className="h-12 w-12 rounded-2xl object-cover border-2 border-[#176B63] shadow-xs"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded-2xl bg-[#176B63] text-white flex items-center justify-center font-black text-sm border-2 border-[#0F4F48] shadow-xs">
+                              {submittedTicket.assigned_staff_name
+                                ? submittedTicket.assigned_staff_name
+                                    .split(" ")
+                                    .map((n: string) => n[0])
+                                    .join("")
+                                    .slice(0, 2)
+                                : "ST"}
+                            </div>
+                          )}
+                          <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#16805D] border-2 border-white rounded-full flex items-center justify-center text-[9px] text-white font-bold">
+                            ✓
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-black text-[#0F172A]">
+                              {submittedTicket.assigned_staff_name || "Dedicated Hospital Care Specialist"}
+                            </h4>
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-[#EDF7F2] text-[#16805D] border border-[#A6E1CE]">
+                              Dedicated Care
+                            </span>
+                          </div>
+                          <p className="text-xs font-semibold text-[#64748B]">
+                            {submittedTicket.assigned_staff_designation || `${submittedTicket.department} Team Specialist`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Summary of diligence & accomplishment */}
+                      <div className="bg-white p-3 rounded-xl border border-[#CBD5E1] space-y-1.5 text-xs">
+                        <div className="flex items-center gap-1.5 text-[#16805D] font-bold text-[11px] uppercase tracking-wide">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>Work Completed & Hospital Quality Standards</span>
+                        </div>
+                        <p className="text-[#334155] font-medium leading-relaxed">
+                          {submittedTicket.resolution_summary
+                            ? submittedTicket.resolution_summary
+                            : `Attended promptly to your ${submittedTicket.category || "service"} request at ${submittedTicket.room_number}, completed all safety tests, and ensured clean handover.`}
+                        </p>
+                        <div className="pt-1.5 flex flex-wrap gap-1.5 text-[10px] font-bold text-[#475569]">
+                          <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Attended On-Time</span>
+                          <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ High Hygiene & Safety Protocol</span>
+                          <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Dignified Patient Care Assured</span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11.5px] font-semibold text-[#1E40AF] leading-snug">
+                        Our frontline team works hard every day to care for your comfort and dignity. If you are satisfied with {submittedTicket.assigned_staff_name ? `${submittedTicket.assigned_staff_name}'s` : "our staff's"} prompt service, please share a positive rating below to recognize their dedication!
+                      </p>
+                    </div>
+
+                    {feedbackSubmitted ? (
+                      <div className="p-4 rounded-xl bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-xs font-semibold text-center space-y-1">
+                        <CheckCircle2 className="h-6 w-6 mx-auto" />
+                        <p className="text-sm font-bold">Thank you for your valuable feedback!</p>
+                        <p className="text-[11px] text-[#16805D]/80">
+                          Your response helps us continually recognize staff and deliver dignified patient care.
+                        </p>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleFeedbackSubmit} className="space-y-4 text-xs">
+                        {/* 3 Emoji Buttons */}
+                        <div className="space-y-1.5">
+                          <label className="text-[#344054] font-semibold block">
+                            Overall Satisfaction: <span className="text-[#DC2626]">*</span>
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEmoji("unhappy")}
+                              className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
+                                selectedEmoji === "unhappy"
+                                  ? "bg-[#FEF3F2] border-[#DC2626] text-[#DC2626] font-bold"
+                                  : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
+                              }`}
+                            >
+                              <span className="text-2xl">😞</span>
+                              <span className="text-xs">Unhappy</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEmoji("okay")}
+                              className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
+                                selectedEmoji === "okay"
+                                  ? "bg-[#FEF7EC] border-[#F79009] text-[#B54708] font-bold"
+                                  : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
+                              }`}
+                            >
+                              <span className="text-2xl">😐</span>
+                              <span className="text-xs">Okay</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEmoji("happy")}
+                              className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
+                                selectedEmoji === "happy"
+                                  ? "bg-[#EDF7F2] border-[#16805D] text-[#16805D] font-bold"
+                                  : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
+                              }`}
+                            >
+                              <span className="text-2xl">😊</span>
+                              <span className="text-xs">Happy</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Optional NPS (0 to 10) */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[#344054] font-semibold">
+                              Likelihood to recommend (0 = Unlikely, 10 = Extremely Likely):
+                            </label>
+                            {npsScore !== null && (
+                              <span className="font-bold text-[#176B63] font-mono">{npsScore} / 10</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-1 overflow-x-auto pb-1">
+                            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
+                              <button
+                                key={score}
+                                type="button"
+                                onClick={() => setNpsScore(score)}
+                                className={`flex-1 min-w-[28px] h-8 rounded-lg font-mono text-xs font-bold transition cursor-pointer ${
+                                  npsScore === score
+                                    ? score >= 9
+                                      ? "bg-[#16805D] text-white"
+                                      : score >= 7
+                                      ? "bg-[#F79009] text-white"
+                                      : "bg-[#DC2626] text-white"
+                                    : "bg-[#F8F9FA] border border-[#E5E9EF] text-[#475467] hover:bg-[#EEF4FD]"
+                                }`}
+                              >
+                                {score}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Optional Comment */}
+                        <div className="space-y-1 pt-1">
+                          <label className="text-[#344054] font-semibold block">
+                            Additional Comments (Optional):
+                          </label>
+                          <textarea
+                            value={feedbackComment}
+                            onChange={(e) => setFeedbackComment(e.target.value)}
+                            placeholder="Tell us what you liked about the technician's care or what we can improve..."
+                            rows={3}
+                            className="w-full p-3 rounded-xl border border-[#CBD5E1] bg-white text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#176B63]"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isSubmittingFeedback || !selectedEmoji}
+                          className="w-full py-3.5 bg-[#176B63] hover:bg-[#10574F] text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-[#176B63]/20 disabled:opacity-50"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          <span>{isSubmittingFeedback ? "Recording Feedback..." : "Submit Experience Rating"}</span>
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <a
