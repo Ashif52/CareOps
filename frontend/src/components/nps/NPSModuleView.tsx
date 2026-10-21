@@ -30,6 +30,8 @@ import {
 } from "lucide-react";
 import { api, formatDateTime, getApiBase } from "@/lib/api";
 import { NPSFeedbackDetailModal, NPSFeedbackItem } from "./NPSFeedbackDetailModal";
+import { HospitalFeedbackQRModal } from "./HospitalFeedbackQRModal";
+import { QRCodeSVG } from "qrcode.react";
 
 interface NPSDashboardData {
   tagline: string;
@@ -84,6 +86,14 @@ export function NPSModuleView({ currentUser }: { currentUser: any }) {
   const [activeTab, setActiveTab] = useState<"reviews" | "analytics">("reviews");
   const [viewLayout, setViewLayout] = useState<"cards" | "table">("cards");
   const [selectedFeedbackModal, setSelectedFeedbackModal] = useState<NPSFeedbackItem | null>(null);
+  const [showMasterQRModal, setShowMasterQRModal] = useState(false);
+  const [feedbackURL, setFeedbackURL] = useState("http://localhost:3000/feedback");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setFeedbackURL(`${window.location.origin}/feedback`);
+    }
+  }, []);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -218,6 +228,15 @@ export function NPSModuleView({ currentUser }: { currentUser: any }) {
           </div>
 
           <button
+            onClick={() => setShowMasterQRModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#176B63] hover:bg-[#125852] text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+            title="Generate &amp; Print Hospital Master Feedback QR"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            <span>Hospital Feedback QR</span>
+          </button>
+
+          <button
             onClick={handleExportCSV}
             className="inline-flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-[#F7F8FA] border border-[#E5E9EF] rounded-lg text-xs font-semibold text-[#344054] transition cursor-pointer"
             title="Download CSV export"
@@ -234,6 +253,60 @@ export function NPSModuleView({ currentUser }: { currentUser: any }) {
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </button>
+        </div>
+      </div>
+
+      {/* Hospital Master Feedback QR Code Modal */}
+      <HospitalFeedbackQRModal
+        isOpen={showMasterQRModal}
+        onClose={() => setShowMasterQRModal(false)}
+      />
+
+      {/* Hospital Master Feedback QR Banner (Distinct from Room Bedside QRs) */}
+      <div className="bg-gradient-to-r from-[#0D3833] via-[#176B63] to-[#115049] text-white rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-emerald-500/30">
+        <div className="space-y-2.5 max-w-2xl">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold">
+            <QrCode className="h-3.5 w-3.5" />
+            <span>Hospital Master Feedback QR &bull; Distinct from Room Bedside Complaint QRs</span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+            Hospital-Wide Patient &amp; Visitor Experience QR
+          </h2>
+          <p className="text-xs text-emerald-100/90 leading-relaxed font-normal">
+            Generate and print this Master QR standee for Hospital Reception, OPD Waiting Areas, Billing Counters, and Discharge Desks. Patients and attendants scan to submit overall hospital satisfaction, 3-emoji sentiment, and NPS ratings without filing a maintenance or service complaint.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowMasterQRModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-white text-[#176B63] hover:bg-emerald-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
+            >
+              <QrCode className="h-4 w-4" />
+              <span>Generate &amp; Print Standee Placard</span>
+            </button>
+            <a
+              href="/feedback"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Preview Visitor Experience (/feedback)</span>
+              <ExternalLink className="h-3.5 w-3.5 text-emerald-200" />
+            </a>
+          </div>
+        </div>
+
+        {/* Live Scannable Mini QR Card */}
+        <div
+          onClick={() => setShowMasterQRModal(true)}
+          className="bg-white p-3.5 rounded-2xl shadow-xl border-2 border-emerald-400/40 cursor-pointer hover:scale-105 transition-all shrink-0 text-center group"
+          title="Click to enlarge &amp; print"
+        >
+          <QRCodeSVG value={feedbackURL} size={110} level="H" includeMargin={false} />
+          <div className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-black text-[#176B63] uppercase tracking-wider group-hover:underline">
+            <QrCode className="h-3 w-3" />
+            <span>Tap to Print</span>
+          </div>
         </div>
       </div>
 

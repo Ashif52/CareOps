@@ -1048,8 +1048,18 @@ export const api = {
     const qs = searchParams.toString();
     return fetchWithAuth(qs ? `/nps/responses?${qs}` : "/nps/responses");
   },
-  submitNPSFeedback: (data: { ticket_id?: number; tracking_token?: string; emoji_rating: string; nps_score?: number; feedback_comment?: string }) =>
-    fetchWithAuth("/nps/submit", { method: "POST", body: JSON.stringify(data) }),
+  submitNPSFeedback: (data: {
+    ticket_id?: number;
+    tracking_token?: string;
+    department_id?: string;
+    room_number?: string;
+    patient_name?: string;
+    patient_contact?: string;
+    source?: string;
+    emoji_rating: string;
+    nps_score?: number;
+    feedback_comment?: string;
+  }) => fetchWithAuth("/nps/submit", { method: "POST", body: JSON.stringify(data) }),
   updateNPSAction: (
     responseId: number,
     data: {

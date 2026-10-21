@@ -167,11 +167,23 @@ class EmailService:
         import urllib.request
         import json
 
-        sender = from_email
-        if not sender or "@" not in sender or sender.endswith(".hospital") or sender.endswith(".local"):
+        clean_sender = from_email.lower().strip() if from_email else ""
+        if (
+            not clean_sender
+            or "@" not in clean_sender
+            or clean_sender.endswith(".hospital")
+            or clean_sender.endswith(".local")
+            or "@gmail." in clean_sender
+            or "@yahoo." in clean_sender
+            or "@outlook." in clean_sender
+            or "@hotmail." in clean_sender
+            or "@icloud." in clean_sender
+        ):
             sender = "CareOps Hospital <onboarding@resend.dev>"
-        elif "<" not in sender:
-            sender = f"Happy Care Operations <{sender}>"
+        elif "<" not in from_email:
+            sender = f"Happy Care Operations <{from_email}>"
+        else:
+            sender = from_email
 
         payload = {
             "from": sender,
@@ -180,6 +192,8 @@ class EmailService:
             "html": html_content,
             "text": text_content or "Please view this message in an HTML-compatible email client."
         }
+        if from_email and "@" in from_email and not from_email.endswith(".hospital"):
+            payload["reply_to"] = from_email
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             "https://api.resend.com/emails",
@@ -191,8 +205,17 @@ class EmailService:
             },
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        import urllib.error
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as http_err:
+            try:
+                err_body = json.loads(http_err.read().decode("utf-8"))
+                detail = err_body.get("message", str(err_body))
+            except Exception:
+                detail = f"HTTP {http_err.code}: {http_err.reason}"
+            raise RuntimeError(f"Resend API Error ({http_err.code}): {detail}")
 
     @staticmethod
     def _send_email_worker(email_log_id: int):

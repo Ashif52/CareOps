@@ -22,22 +22,29 @@ router = APIRouter(prefix="/nps", tags=["NPS & Patient Experience"])
 class FeedbackSubmitRequest(BaseModel):
     ticket_id: Optional[int] = None
     tracking_token: Optional[str] = None
+    department_id: Optional[str] = None
+    room_number: Optional[str] = None
+    patient_name: Optional[str] = None
+    patient_contact: Optional[str] = None
+    source: Optional[str] = "Hospital Master Feedback QR"
     emoji_rating: str = Field(..., description="'unhappy', 'okay', or 'happy'")
     nps_score: Optional[int] = Field(None, ge=0, le=10, description="0 to 10 standard NPS")
     feedback_comment: Optional[str] = None
-    patient_contact: Optional[str] = None
 
 class NPSResponseItem(BaseModel):
     id: int
-    ticket_id: Optional[int]
-    ticket_number: Optional[str]
-    department_id: Optional[str]
-    department_name: Optional[str]
-    room_number: Optional[str]
+    ticket_id: Optional[int] = None
+    ticket_number: Optional[str] = None
+    department_id: Optional[str] = None
+    department_name: Optional[str] = None
+    room_number: Optional[str] = None
+    patient_contact: Optional[str] = None
+    source: Optional[str] = None
     emoji_rating: str
-    nps_score: Optional[int]
-    feedback_comment: Optional[str]
+    nps_score: Optional[int] = None
+    feedback_comment: Optional[str] = None
     is_critical: bool
+    resolution_status: Optional[str] = "unresolved"
     created_at: datetime
 
     class Config:
@@ -54,7 +61,8 @@ def submit_patient_feedback(
     db: Session = Depends(get_db)
 ):
     """
-    Submits patient feedback after ticket reaches completion/closure.
+    Submits patient feedback after ticket reaches completion/closure,
+    or general hospital care feedback scanned from the Hospital Master Feedback QR.
     Supports 3-emoji satisfaction + optional 0-10 formal NPS rating.
     """
     if payload.emoji_rating not in ["unhappy", "okay", "happy"]:
@@ -69,9 +77,16 @@ def submit_patient_feedback(
     elif payload.ticket_id:
         ticket = db.query(Ticket).filter(Ticket.id == payload.ticket_id).first()
 
-    department_id = ticket.department_id if ticket else None
-    room_number = ticket.room_number if ticket else None
+    department_id = payload.department_id or (ticket.department_id if ticket else None)
+    room_number = payload.room_number or (ticket.room_number if ticket else None)
     patient_contact = payload.patient_contact or (ticket.patient_contact if ticket else None)
+    source = payload.source or ("Bedside QR Code" if ticket else "Hospital Master Feedback QR")
+
+    # Combine name with comment if provided
+    final_comment = payload.feedback_comment
+    if payload.patient_name:
+        name_prefix = f"Feedback from: {payload.patient_name.strip()}"
+        final_comment = f"{name_prefix} — {final_comment}" if final_comment else name_prefix
 
     # Calculate criticality
     # Critical if patient picked unhappy emoji OR gave a formal NPS score of 0-6 (Detractor)
@@ -84,20 +99,21 @@ def submit_patient_feedback(
         room_number=room_number,
         emoji_rating=payload.emoji_rating,
         nps_score=payload.nps_score,
-        feedback_comment=payload.feedback_comment,
+        feedback_comment=final_comment,
+        source=source,
         is_critical=is_critical,
         is_demo=False
     )
     db.add(response_entry)
 
     # Record audit log if critical feedback received
-    if is_critical and ticket:
+    if is_critical:
         audit = AuditLog(
-            ticket_id=ticket.id,
+            ticket_id=ticket.id if ticket else None,
             action="CRITICAL_PATIENT_FEEDBACK_RECEIVED",
-            actor_name="Patient Feedback Portal",
+            actor_name=f"Patient Feedback ({source})",
             actor_role="patient",
-            details=f"Received critical feedback. Emoji: {payload.emoji_rating}, Formal NPS: {payload.nps_score}. Comment: {payload.feedback_comment or 'None'}"
+            details=f"Received critical feedback. Emoji: {payload.emoji_rating}, Formal NPS: {payload.nps_score}. Dept: {department_id or 'Hospital-Wide'}. Comment: {final_comment or 'None'}"
         )
         db.add(audit)
 
