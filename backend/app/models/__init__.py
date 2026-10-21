@@ -265,6 +265,7 @@ class EscalationSetting(Base):
     smtp_password = Column(String(255), nullable=True)
     smtp_from = Column(String(255), nullable=True, default="alerts@careops.hospital")
     smtp_use_ssl = Column(Boolean, default=True)
+    resend_api_key = Column(String(255), nullable=True)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 class TicketNote(Base):

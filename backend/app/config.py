@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     SMTP_USE_SSL: bool = os.getenv("SMTP_USE_SSL", "true").lower() in ("true", "1", "yes")
     MAINTENANCE_DEPARTMENT_EMAIL: str = os.getenv("MAINTENANCE_DEPARTMENT_EMAIL", "maintenance@careops.hospital")
     MAINTENANCE_DEPARTMENT_MOBILE: str = os.getenv("MAINTENANCE_DEPARTMENT_MOBILE", "+91 98765 00003")
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
 
     class Config:
         env_file = ".env"

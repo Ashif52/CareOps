@@ -84,6 +84,9 @@ def run_migrations():
             ("resolution_status", "VARCHAR(50) DEFAULT 'unresolved'"),
             ("resolved_by", "VARCHAR(100)"),
             ("resolved_at", datetime_type),
+        ],
+        "escalation_settings": [
+            ("resend_api_key", "VARCHAR(255)"),
         ]
     }
 

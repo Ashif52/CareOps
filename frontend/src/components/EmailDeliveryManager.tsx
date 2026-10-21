@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   Settings,
   Lock,
-  Sparkles
+  Sparkles,
+  Cloud
 } from "lucide-react";
 import { api, EmailLog, EmailStats, formatDateTime } from "@/lib/api";
 
@@ -61,6 +62,7 @@ export function EmailDeliveryManager() {
     smtp_password: "",
     smtp_from: "alerts@careops.hospital",
     smtp_use_ssl: true,
+    resend_api_key: "",
   });
 
   const handleOpenConfigModal = async () => {
@@ -78,6 +80,7 @@ export function EmailDeliveryManager() {
           smtp_password: "",
           smtp_from: data.smtp_from || "alerts@careops.hospital",
           smtp_use_ssl: data.smtp_use_ssl ?? true,
+          resend_api_key: data.resend_api_key || "",
         });
       }
     } catch (err: any) {
@@ -114,8 +117,8 @@ export function EmailDeliveryManager() {
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!smtpConfig.smtp_host.trim()) {
-      setConfigErrorMsg("SMTP Host is required (e.g. smtp.gmail.com).");
+    if (!smtpConfig.smtp_host.trim() && !smtpConfig.resend_api_key.trim()) {
+      setConfigErrorMsg("Please provide either an SMTP Host (e.g. smtp.gmail.com) or a Resend API Key for cloud delivery.");
       return;
     }
     setIsSavingConfig(true);
@@ -123,7 +126,7 @@ export function EmailDeliveryManager() {
     setConfigErrorMsg(null);
     try {
       await api.updateEmailConfig(smtpConfig);
-      setConfigSuccessMsg("SMTP settings saved directly to database!");
+      setConfigSuccessMsg("Email settings saved directly to database!");
       fetchEmailData();
       setTimeout(() => {
         setShowConfigModal(false);
@@ -880,6 +883,29 @@ export function EmailDeliveryManager() {
                   <li>Name it <em>CareOps Hospital</em> and click <strong>Create</strong>.</li>
                   <li>Copy the 16 letters and paste into the Password field above.</li>
                 </ol>
+              </div>
+
+              {/* Cloud HTTPS Delivery (Resend API Key) */}
+              <div className="p-3.5 rounded-xl bg-sky-50/80 border border-sky-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-sky-950 text-xs flex items-center gap-1.5">
+                    <Cloud className="h-4 w-4 text-sky-600" />
+                    <span>Cloud Deployment Option: Resend API Key (HTTPS Port 443)</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full border border-sky-300">
+                    Bypasses Cloud Firewalls
+                  </span>
+                </div>
+                <input
+                  type="password"
+                  placeholder="re_123456789... (from resend.com - free 3,000 emails/month)"
+                  value={smtpConfig.resend_api_key}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, resend_api_key: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border border-sky-200 bg-white focus:outline-none focus:border-sky-500 font-mono text-xs"
+                />
+                <p className="text-[11px] text-sky-800 leading-relaxed">
+                  💡 <strong>Recommended for Render Cloud:</strong> Free cloud containers block raw SMTP ports (465 &amp; 587). Resend transmits emails via HTTPS (Port 443), guaranteeing 100% reliable delivery for Work Started and Work Finished client receipts.
+                </p>
               </div>
 
               {/* Actions */}

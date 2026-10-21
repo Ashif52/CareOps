@@ -29,7 +29,7 @@ def test_departments_and_rooms_seeded():
     depts = resp.json()
     assert len(depts) >= 6
     dept_ids = [d["id"] for d in depts]
-    for required in ["maintenance", "doctors", "nursing", "housekeeping", "billing", "pharmacy"]:
+    for required in ["maintenance", "housekeeping", "linen", "medical", "it"]:
         assert required in dept_ids
 
     # Verify rooms

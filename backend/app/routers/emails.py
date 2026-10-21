@@ -38,6 +38,7 @@ class SMTPConfigUpdate(BaseModel):
     smtp_use_ssl: Optional[bool] = None
     work_email: Optional[str] = None
     maintenance_email: Optional[str] = None
+    resend_api_key: Optional[str] = None
 
 
 @router.get("")
@@ -223,7 +224,8 @@ def get_smtp_configuration(
         "smtp_use_ssl": cfg["smtp_use_ssl"],
         "work_email": cfg["work_email"] or "",
         "maintenance_email": cfg["maintenance_email"] or "",
-        "has_password": bool(cfg["smtp_password"])
+        "has_password": bool(cfg["smtp_password"]),
+        "has_resend_api_key": bool(cfg.get("resend_api_key"))
     }
 
 
@@ -258,11 +260,13 @@ def update_smtp_configuration(
         db_conf.work_email = payload.work_email.strip()
     if payload.maintenance_email is not None:
         db_conf.maintenance_email = payload.maintenance_email.strip()
+    if payload.resend_api_key is not None:
+        db_conf.resend_api_key = payload.resend_api_key.strip() or None
 
     db.commit()
     db.refresh(db_conf)
 
     return {
         "success": True,
-        "message": "SMTP configuration updated successfully."
+        "message": "Email delivery and transport configuration updated successfully."
     }

@@ -1,27 +1,48 @@
 export function getApiBase(): string {
-  // If explicitly configured via environment variable (e.g. on Vercel deployment)
-  if (process.env.NEXT_PUBLIC_API_URL) {
+  // If an explicit full API URL is configured (e.g. in Vercel environment variables), honor it
+  if (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.startsWith("http")) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "");
   }
 
   if (typeof window !== "undefined") {
-    // In any browser context (desktop localhost, mobile LAN IP like 192.168.x.x, or deployed domain),
-    // always route requests through the same-origin Next.js reverse proxy (/api).
-    // This eliminates CORS blocks, mobile port 8000 firewall rejections, and infinite spinning.
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1" || /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
+
+    // When running on Vercel or any cloud public domain (e.g. *.vercel.app),
+    // connect directly to the cloud backend (Render) to eliminate Vercel's 10-second serverless timeout limit
+    // and enable persistent Server-Sent Events (SSE) streaming.
+    if (!isLocal) {
+      if (process.env.NEXT_PUBLIC_BACKEND_URL && process.env.NEXT_PUBLIC_BACKEND_URL.startsWith("http")) {
+        return `${process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/+$/, "")}/api`;
+      }
+      return "https://careops-5uaf.onrender.com/api";
+    }
+
+    // In local dev and mobile LAN testing, route through same-origin Next.js reverse proxy (/api)
     return `${window.location.origin}/api`;
   }
-  return "http://127.0.0.1:8000/api";
+
+  // Server-side rendering fallback
+  if (process.env.NEXT_PUBLIC_BACKEND_URL && process.env.NEXT_PUBLIC_BACKEND_URL.startsWith("http")) {
+    return `${process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/+$/, "")}/api`;
+  }
+
+  return "https://careops-5uaf.onrender.com/api";
 }
 
 export function getBackendBase(): string {
-  if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+  if (process.env.NEXT_PUBLIC_BACKEND_URL && process.env.NEXT_PUBLIC_BACKEND_URL.startsWith("http")) {
     return process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/+$/, "");
   }
   if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1" || /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
+    if (!isLocal) {
+      return "https://careops-5uaf.onrender.com";
+    }
     return window.location.origin;
   }
-  const apiUrl = getApiBase();
-  return apiUrl.replace(/\/api\/?$/, "");
+  return "https://careops-5uaf.onrender.com";
 }
 
 export function getFileUrl(url: string | null | undefined): string {
@@ -325,6 +346,8 @@ export interface Ticket {
   delay_reason?: string | null;
   revised_eta?: string | null;
   patient_contact?: string | null;
+  patient_email?: string | null;
+  patient_tracking_token?: string | null;
   patient_feedback_rating?: number | null;
   patient_feedback_comment?: string | null;
   created_at: string;
@@ -724,6 +747,13 @@ export const api = {
     fetchWithAuth(`/tickets/${id}/delay-report`, { method: "POST", body: JSON.stringify(data) }),
   addNote: (id: number, data: { content: string; is_internal: boolean }) =>
     fetchWithAuth(`/tickets/${id}/notes`, { method: "POST", body: JSON.stringify(data) }),
+  updateTicketContact: (id: number, data: { patient_email?: string; patient_contact?: string; resend_email?: boolean }) =>
+    fetchWithAuth(`/tickets/${id}/contact`, { method: "PUT", body: JSON.stringify(data) }),
+  sendFollowupEmail: (id: number, stage: "work_started" | "work_finished", recipientEmail?: string, customNotes?: string) =>
+    fetchWithAuth(`/tickets/${id}/send-followup-email`, {
+      method: "POST",
+      body: JSON.stringify({ stage, recipient_email: recipientEmail, custom_notes: customNotes }),
+    }),
 
   // Evidence
   uploadEvidence: (formData: FormData) =>

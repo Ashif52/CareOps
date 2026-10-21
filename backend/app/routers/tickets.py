@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 import json
 from typing import Optional, List
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -18,12 +19,13 @@ from app.schemas import (
     TicketResponse, StaffTicketCreate, TicketAcknowledgeRequest,
     TicketStartWorkRequest, TicketResolutionSubmitRequest,
     TicketClosureRequest, TicketDelayReportRequest, TicketNoteCreate,
-    TicketNoteResponse
+    TicketNoteResponse, TicketContactUpdateRequest, FollowupEmailRequest
 )
 from app.services.auth_service import get_current_user
 from app.services.ticket_service import TicketService
 from app.services.sla_engine import SLAEngine
 from app.services.realtime_service import realtime_hub
+from app.services.email_service import EmailService
 
 router = APIRouter(prefix="/tickets", tags=["Ticket Operations"])
 
@@ -71,6 +73,8 @@ def serialize_ticket_for_event(ticket: Ticket, db: Session) -> dict:
         "delay_reason": ticket.delay_reason,
         "revised_eta": ticket.revised_eta.isoformat() if ticket.revised_eta else None,
         "patient_contact": ticket.patient_contact,
+        "patient_email": ticket.patient_email,
+        "patient_tracking_token": ticket.patient_tracking_token,
         "patient_feedback_rating": ticket.patient_feedback_rating,
         "patient_feedback_comment": ticket.patient_feedback_comment,
         "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
@@ -150,6 +154,8 @@ def enrich_ticket_response(ticket: Ticket, db: Session) -> dict:
         "delay_reason": ticket.delay_reason,
         "revised_eta": ticket.revised_eta,
         "patient_contact": ticket.patient_contact,
+        "patient_email": ticket.patient_email,
+        "patient_tracking_token": ticket.patient_tracking_token,
         "patient_feedback_rating": ticket.patient_feedback_rating,
         "patient_feedback_comment": ticket.patient_feedback_comment,
         "created_at": ticket.created_at,
@@ -329,6 +335,10 @@ async def create_staff_ticket(
         if auto_staff:
             assigned_staff_id = auto_staff.id
             
+    patient_email = payload.patient_email.strip() if payload.patient_email and payload.patient_email.strip() else None
+    patient_contact = payload.patient_contact.strip() if payload.patient_contact and payload.patient_contact.strip() else None
+    tracking_token = uuid.uuid4().hex[:12]
+
     ticket = Ticket(
         ticket_number=ticket_number,
         title=payload.title,
@@ -342,7 +352,10 @@ async def create_staff_ticket(
         assigned_staff_id=assigned_staff_id,
         assigned_supervisor_id=dept.supervisor_id,
         sla_acknowledgement_deadline=ack_dl,
-        sla_resolution_deadline=res_dl
+        sla_resolution_deadline=res_dl,
+        patient_email=patient_email,
+        patient_contact=patient_contact,
+        patient_tracking_token=tracking_token
     )
     db.add(ticket)
     db.flush()
@@ -353,11 +366,17 @@ async def create_staff_ticket(
         actor_id=current_user.id,
         actor_name=current_user.name,
         actor_role=current_user.role,
-        details=json.dumps({"title": payload.title, "priority": payload.priority})
+        details=json.dumps({"title": payload.title, "priority": payload.priority, "patient_email": patient_email})
     )
     db.add(audit)
     db.commit()
     db.refresh(ticket)
+
+    # Healthcare Outbound Email Dispatch
+    try:
+        EmailService.on_ticket_created(db, ticket)
+    except Exception:
+        pass
 
     # Real-time event dispatch
     try:
@@ -530,3 +549,105 @@ def add_note(
     db.commit()
     db.refresh(note)
     return note
+
+@router.put("/{ticket_id}/contact", response_model=TicketResponse)
+async def update_ticket_contact(
+    ticket_id: int,
+    payload: TicketContactUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    check_ticket_access(ticket, current_user)
+    
+    if payload.patient_email is not None:
+        ticket.patient_email = payload.patient_email.strip() or None
+    if payload.patient_contact is not None:
+        ticket.patient_contact = payload.patient_contact.strip() or None
+        
+    if not ticket.patient_tracking_token:
+        ticket.patient_tracking_token = uuid.uuid4().hex[:12]
+        
+    audit = AuditLog(
+        ticket_id=ticket.id,
+        action="CONTACT_UPDATED",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({"patient_email": ticket.patient_email, "patient_contact": ticket.patient_contact})
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(ticket)
+    
+    if payload.resend_email and ticket.patient_email:
+        try:
+            EmailService.on_ticket_created(db, ticket)
+        except Exception:
+            pass
+            
+    try:
+        await realtime_hub.publish_ticket_updated(serialize_ticket_for_event(ticket, db))
+    except Exception:
+        pass
+        
+    return enrich_ticket_response(ticket, db)
+
+@router.post("/{ticket_id}/send-followup-email")
+async def send_followup_email(
+    ticket_id: int,
+    payload: FollowupEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    check_ticket_access(ticket, current_user)
+    
+    recipient = (payload.recipient_email or ticket.patient_email or "").strip()
+    if not recipient:
+        raise HTTPException(status_code=400, detail="No client email specified or saved for this ticket. Please enter a valid email address.")
+        
+    stage = payload.stage
+    notes = payload.custom_notes
+    success = False
+    
+    if stage == "work_started":
+        log = EmailService.send_work_started_email(
+            db, ticket,
+            actor_name=current_user.name,
+            update_note=notes,
+            recipient=recipient
+        )
+        success = bool(log and log.status != "failed")
+    elif stage == "work_finished":
+        log = EmailService.send_work_completed_email(
+            db, ticket,
+            actor_name=current_user.name,
+            summary=notes or ticket.resolution_summary or "Work completed successfully by assigned technician.",
+            recipient=recipient
+        )
+        success = bool(log and log.status != "failed")
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid stage '{stage}'. Must be 'work_started' or 'work_finished'.")
+        
+    audit = AuditLog(
+        ticket_id=ticket.id,
+        action="FOLLOWUP_EMAIL_SENT",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({"stage": stage, "recipient": recipient, "success": success})
+    )
+    db.add(audit)
+    db.commit()
+    
+    return {
+        "status": "success" if success else "failed",
+        "stage": stage,
+        "recipient": recipient,
+        "message": f"Follow-up email for '{stage}' sent to {recipient}" if success else f"Email attempt to {recipient} failed. Verify SMTP settings in Admin."
+    }

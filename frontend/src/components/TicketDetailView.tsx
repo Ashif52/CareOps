@@ -19,9 +19,12 @@ import {
   ArrowRight,
   ExternalLink,
   Volume2,
-  Loader2
+  Loader2,
+  Mail,
+  Check,
+  Edit2
 } from "lucide-react";
-import { Ticket, User as UserType, getFileUrl, formatTime, formatDateTime, parseUtcDate, formatDurationHoursMinutes } from "@/lib/api";
+import { api, Ticket, User as UserType, getFileUrl, formatTime, formatDateTime, parseUtcDate, formatDurationHoursMinutes } from "@/lib/api";
 
 interface TicketDetailViewProps {
   ticket: Ticket;
@@ -61,6 +64,57 @@ export function TicketDetailView({
   const [uploadStage, setUploadStage] = useState<"before" | "after">("before");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isActionPending, setIsActionPending] = useState(false);
+
+  // Client Follow-up Email states
+  const [clientEmail, setClientEmail] = useState(ticket.patient_email || "");
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [emailSendStatus, setEmailSendStatus] = useState<{ stage: string; msg: string; type: "success" | "error" } | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState<string | null>(null);
+
+  const handleSaveEmail = async () => {
+    setIsSavingEmail(true);
+    try {
+      await api.updateTicketContact(ticket.id, {
+        patient_email: clientEmail.trim() || undefined,
+      });
+      setIsEditingEmail(false);
+      setEmailSendStatus({ stage: "save", msg: "Client email saved successfully.", type: "success" });
+      setTimeout(() => setEmailSendStatus(null), 4000);
+    } catch (e: any) {
+      setEmailSendStatus({ stage: "save", msg: e.message || "Failed to save email", type: "error" });
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  const handleSendFollowup = async (stage: "work_started" | "work_finished") => {
+    const targetEmail = clientEmail.trim() || ticket.patient_email;
+    if (!targetEmail) {
+      setIsEditingEmail(true);
+      setEmailSendStatus({ stage, msg: "Please enter a client email address first.", type: "error" });
+      return;
+    }
+    setIsSendingEmail(stage);
+    setEmailSendStatus(null);
+    try {
+      const res = await api.sendFollowupEmail(ticket.id, stage, targetEmail);
+      setEmailSendStatus({
+        stage,
+        msg: res.message || `Follow-up '${stage === "work_started" ? "Work Started" : "Work Finished"}' email dispatched to ${targetEmail}`,
+        type: "success"
+      });
+      setTimeout(() => setEmailSendStatus(null), 5000);
+    } catch (e: any) {
+      setEmailSendStatus({
+        stage,
+        msg: e.message || `Failed to dispatch ${stage} email. Check SMTP settings.`,
+        type: "error"
+      });
+    } finally {
+      setIsSendingEmail(null);
+    }
+  };
 
   const canAcknowledge = ticket.status === "submitted" || ticket.status === "assigned";
   const canStartWork = ticket.status === "acknowledged";
@@ -307,10 +361,16 @@ export function TicketDetailView({
                     <span className="text-[#667085]">Category / Appliance:</span>
                     <span className="font-semibold text-[#17212F]">{ticket.category}</span>
                   </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-[#667085]">Patient Contact:</span>
+                  <div className="flex justify-between py-1 border-b border-[#F1F4F9]">
+                    <span className="text-[#667085]">Patient Phone:</span>
                     <span className="font-medium text-[#17212F]">
-                      {ticket.patient_contact || "Anonymous Room Guest"}
+                      {ticket.patient_contact || "Not provided"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-[#667085]">Client Email:</span>
+                    <span className="font-medium text-[#17212F] truncate max-w-[180px]">
+                      {clientEmail || ticket.patient_email || "Not registered"}
                     </span>
                   </div>
                 </div>
@@ -362,6 +422,125 @@ export function TicketDetailView({
                       )}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              {/* Client Email & Direct Follow-up Notification Dispatches */}
+              <div className="bg-gradient-to-br from-[#F0F7F6] to-white p-4 rounded-xl border border-[#176B63]/25 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#176B63]/10 text-[#176B63]">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-[#17212F] text-xs">Client / Patient Follow-up Emails</h4>
+                      <p className="text-[11px] text-[#667085]">Automated and manual status updates for the client</p>
+                    </div>
+                  </div>
+                  {clientEmail && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E8F3F1] text-[#176B63]">
+                      Email Ready
+                    </span>
+                  )}
+                </div>
+
+                {/* Client Email Input / Display */}
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-[#667085] whitespace-nowrap font-medium">Recipient:</span>
+                  {isEditingEmail ? (
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <input
+                        type="email"
+                        value={clientEmail}
+                        onChange={(e) => setClientEmail(e.target.value)}
+                        placeholder="client@gmail.com"
+                        className="flex-1 p-1.5 rounded-lg border border-[#176B63] bg-white text-xs focus:outline-none"
+                      />
+                      <button
+                        onClick={handleSaveEmail}
+                        disabled={isSavingEmail}
+                        className="px-2.5 py-1.5 bg-[#176B63] text-white rounded-lg font-bold text-xs hover:bg-[#10574F] transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        {isSavingEmail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        <span>Save</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setClientEmail(ticket.patient_email || "");
+                          setIsEditingEmail(false);
+                        }}
+                        className="px-2 py-1.5 border border-[#E5E9EF] rounded-lg text-xs hover:bg-gray-100 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between flex-1 bg-white px-2.5 py-1.5 rounded-lg border border-[#E5E9EF]">
+                      <span className={`font-mono text-xs ${clientEmail ? "text-[#17212F] font-semibold" : "text-[#94A3B8] italic"}`}>
+                        {clientEmail || "No client email configured"}
+                      </span>
+                      <button
+                        onClick={() => setIsEditingEmail(true)}
+                        className="text-[#176B63] hover:underline text-[11px] font-bold flex items-center gap-1 cursor-pointer ml-2"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                        <span>{clientEmail ? "Edit" : "+ Add Client Email"}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Status feedback message */}
+                {emailSendStatus && (
+                  <div
+                    className={`p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 ${
+                      emailSendStatus.type === "success"
+                        ? "bg-[#EDF7F2] text-[#16805D] border border-[#A6E1CE]"
+                        : "bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5]"
+                    }`}
+                  >
+                    {emailSendStatus.type === "success" ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+                    <span>{emailSendStatus.msg}</span>
+                  </div>
+                )}
+
+                {/* Fast Follow-up Dispatch Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => handleSendFollowup("work_started")}
+                    disabled={isSendingEmail !== null}
+                    className="p-2.5 rounded-lg bg-white border border-[#E5E9EF] hover:border-[#176B63] hover:bg-[#F0F7F6] text-left transition-all group cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-[#17212F] flex items-center gap-1">
+                        <Play className="h-3.5 w-3.5 text-[#176B63]" /> Send &quot;Work Started&quot; Email
+                      </span>
+                      {isSendingEmail === "work_started" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#176B63]" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5 text-[#667085] group-hover:text-[#176B63]" />
+                      )}
+                    </div>
+                    <p className="text-[10px] text-[#667085] mt-1">Alerts client that technician is on-site and work is in progress</p>
+                  </button>
+
+                  <button
+                    onClick={() => handleSendFollowup("work_finished")}
+                    disabled={isSendingEmail !== null}
+                    className="p-2.5 rounded-lg bg-white border border-[#E5E9EF] hover:border-[#16805D] hover:bg-[#EDF7F2] text-left transition-all group cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-[#17212F] flex items-center gap-1">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[#16805D]" /> Send &quot;Work Finished&quot; Email
+                      </span>
+                      {isSendingEmail === "work_finished" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#16805D]" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5 text-[#667085] group-hover:text-[#16805D]" />
+                      )}
+                    </div>
+                    <p className="text-[10px] text-[#667085] mt-1">Sends completion confirmation, repair details &amp; feedback link</p>
+                  </button>
                 </div>
               </div>
 

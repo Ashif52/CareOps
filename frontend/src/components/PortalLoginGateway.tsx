@@ -35,11 +35,8 @@ export function PortalLoginGateway({
   onLoginSuccess,
   onEnterPatientPortal,
 }: PortalLoginGatewayProps) {
-  // Exactly Three Main Portals
-  const [selectedPortal, setSelectedPortal] = useState<"admin" | "staff" | "patient">("admin");
-
-  // Patient Sub-mode
-  const [patientMode, setPatientMode] = useState<"login" | "register">("login");
+  // Hospital Operations Portals: Admin & Staff
+  const [selectedPortal, setSelectedPortal] = useState<"admin" | "staff">("admin");
 
   // Shared Credential Fields
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -48,20 +45,7 @@ export function PortalLoginGateway({
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Authenticating...");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Patient Registration Fields
-  const [regName, setRegName] = useState("");
-  const [regPhone, setRegPhone] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regRoom, setRegRoom] = useState("");
-  const [regBed, setRegBed] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [showRegPassword, setShowRegPassword] = useState(false);
-  const [regSuccessData, setRegSuccessData] = useState<{
-    patient_id: string;
-    token: string;
-    user: any;
-  } | null>(null);
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "waking">("checking");
 
   // Forgot Password Modal
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -73,18 +57,33 @@ export function PortalLoginGateway({
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
 
-  // Pre-warm backend
+  // Pre-warm backend and check health
   useEffect(() => {
+    let isMounted = true;
     api.warmup();
+    api.healthCheck()
+      .then(() => {
+        if (isMounted) setBackendStatus("online");
+      })
+      .catch(() => {
+        if (isMounted) setBackendStatus("waking");
+        // Retry in 4 seconds if cloud backend is waking up
+        setTimeout(() => {
+          api.healthCheck()
+            .then(() => { if (isMounted) setBackendStatus("online"); })
+            .catch(() => {});
+        }, 4000);
+      });
+
+    return () => { isMounted = false; };
   }, []);
 
   // Clear inputs on portal change
-  const handleSelectPortal = (portal: "admin" | "staff" | "patient") => {
+  const handleSelectPortal = (portal: "admin" | "staff") => {
     setSelectedPortal(portal);
     setErrorMsg(null);
     setLoginIdentifier("");
     setPassword("");
-    setPatientMode("login");
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -107,13 +106,7 @@ export function PortalLoginGateway({
 
       setStoredToken(res.access_token);
 
-      if (res.user.role === "patient") {
-        if (onEnterPatientPortal) {
-          onEnterPatientPortal();
-        } else {
-          onLoginSuccess(res.user, "my-requests");
-        }
-      } else if (res.user.role === "staff") {
+      if (res.user.role === "staff") {
         onLoginSuccess(res.user, "my-department");
       } else {
         onLoginSuccess(
@@ -123,39 +116,6 @@ export function PortalLoginGateway({
       }
     } catch (err: any) {
       setErrorMsg(err.message || "Invalid credentials. Please verify your details.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRegisterPatientSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regName.trim() || !regPhone.trim() || !regPassword.trim()) {
-      setErrorMsg("Please enter your Name, Phone Number, and Password.");
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await api.registerPatient({
-        name: regName.trim(),
-        phone: regPhone.trim(),
-        email: regEmail.trim() || undefined,
-        room_number: regRoom.trim() || undefined,
-        bed_number: regBed.trim() || undefined,
-        password: regPassword.trim(),
-      });
-
-      setRegSuccessData({
-        patient_id: res.patient_id,
-        token: res.access_token,
-        user: res.user,
-      });
-      setStoredToken(res.access_token);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to register patient account.");
     } finally {
       setIsLoading(false);
     }
@@ -248,37 +208,45 @@ export function PortalLoginGateway({
         </div>
 
         <div className="flex items-center gap-2">
-          {onEnterPatientPortal && (
-            <button
-              type="button"
-              onClick={() => onEnterPatientPortal()}
-              className="px-3.5 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-            >
-              <QrCode className="h-3.5 w-3.5 text-[#176B63]" />
-              <span>Direct Bedside QR</span>
-            </button>
-          )}
-          <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
-            <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
-            <span>NABH / HIPAA Protected</span>
+          <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${
+              backendStatus === "online" 
+                ? "text-emerald-800 bg-emerald-50 border-emerald-200" 
+                : backendStatus === "waking"
+                ? "text-amber-800 bg-amber-50 border-amber-200"
+                : "text-slate-700 bg-slate-100 border-slate-200"
+            }`}>
+              <span className={`h-2 w-2 rounded-full ${
+                backendStatus === "online" 
+                  ? "bg-emerald-600 animate-pulse" 
+                  : backendStatus === "waking"
+                  ? "bg-amber-500 animate-ping"
+                  : "bg-slate-400"
+              }`} />
+              <span>
+                {backendStatus === "online"
+                  ? "Hospital Cloud API: Online"
+                  : backendStatus === "waking"
+                  ? "Connecting / Waking Cloud..."
+                  : "NABH / HIPAA Protected"}
+              </span>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       {/* Main Container */}
-      <main className="max-w-6xl w-full mx-auto my-auto py-6 space-y-6">
+      <main className="max-w-4xl w-full mx-auto my-auto py-6 space-y-6">
         {/* Title */}
         <div className="text-center max-w-xl mx-auto space-y-1">
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
             Hospital Management System
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Select your authorized portal to authenticate against the hospital central identity system.
+            Sign in to your authorized operations workspace. Patient requests are submitted via bedside room QR codes.
           </p>
         </div>
 
-        {/* The Exactly Three Main Portals Selector Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* The Two Main Authorized Portals Selector Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
           {/* 1. Admin Portal */}
           <button
             type="button"
@@ -311,7 +279,7 @@ export function PortalLoginGateway({
             </div>
             <h2 className="font-extrabold text-base text-slate-900">Admin Portal</h2>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Executive authority, staff credential management, department assignments, and SMTP logs.
+              Executive authority, staff credentials, SLA policies, security audit & email delivery dispatch.
             </p>
             {selectedPortal === "admin" && (
               <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
@@ -362,48 +330,6 @@ export function PortalLoginGateway({
               </div>
             )}
           </button>
-
-          {/* 3. Patient Portal */}
-          <button
-            type="button"
-            onClick={() => handleSelectPortal("patient")}
-            className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
-              selectedPortal === "patient"
-                ? "bg-white border-[#176B63] shadow-lg shadow-[#176B63]/10"
-                : "bg-white/70 hover:bg-white border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div
-                className={`p-2.5 rounded-xl ${
-                  selectedPortal === "patient"
-                    ? "bg-[#176B63] text-white shadow-sm"
-                    : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
-                }`}
-              >
-                <User className="h-5 w-5" />
-              </div>
-              <span
-                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                  selectedPortal === "patient"
-                    ? "bg-emerald-50 text-[#176B63] border border-emerald-200"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                Portal C
-              </span>
-            </div>
-            <h2 className="font-extrabold text-base text-slate-900">Patient Portal</h2>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Mobile-friendly patient requests, bedside complaint filing, live progress tracking, and feedback.
-            </p>
-            {selectedPortal === "patient" && (
-              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
-                <span>Active Portal</span>
-                <ArrowRight className="h-3 w-3" />
-              </div>
-            )}
-          </button>
         </div>
 
         {/* Portal Login Card */}
@@ -412,49 +338,16 @@ export function PortalLoginGateway({
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
               <span className="text-[10px] uppercase font-bold tracking-wider text-[#176B63]">
-                {selectedPortal === "admin"
-                  ? "Executive Authentication"
-                  : selectedPortal === "staff"
-                  ? "Hospital Employee Sign In"
-                  : "Patient Access Gateway"}
+                {selectedPortal === "admin" ? "Executive Authentication" : "Hospital Employee Sign In"}
               </span>
               <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                {selectedPortal === "admin"
-                  ? "Admin Sign In"
-                  : selectedPortal === "staff"
-                  ? "Staff Sign In"
-                  : patientMode === "login"
-                  ? "Patient Sign In"
-                  : "Register Patient Account"}
+                {selectedPortal === "admin" ? "Admin Sign In" : "Staff Sign In"}
               </h3>
             </div>
-
-            {selectedPortal === "patient" && (
-              <div className="flex items-center p-1 bg-slate-100 rounded-xl text-xs">
-                <button
-                  type="button"
-                  onClick={() => setPatientMode("login")}
-                  className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                    patientMode === "login"
-                      ? "bg-white text-slate-900 shadow-2xs"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPatientMode("register")}
-                  className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                    patientMode === "register"
-                      ? "bg-white text-[#176B63] shadow-2xs"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  Register
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+              <Lock className="h-3 w-3 text-[#176B63]" />
+              <span>TLS 1.3 Encrypted</span>
+            </div>
           </div>
 
           {/* Error Notice */}
@@ -465,215 +358,86 @@ export function PortalLoginGateway({
             </div>
           )}
 
-          {/* Form Handling */}
-          {selectedPortal === "patient" && patientMode === "register" ? (
-            /* Patient Registration Form */
-            regSuccessData ? (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <h4 className="font-bold text-sm">Account Created Successfully</h4>
-                </div>
-                <p className="text-xs text-emerald-800">
-                  Your patient account is now registered in the hospital database. Your unique identifier is:
-                </p>
-                <div className="p-3 bg-white rounded-xl border border-emerald-200 font-mono text-center">
-                  <div className="text-[11px] text-slate-500 uppercase">Assigned Patient ID</div>
-                  <strong className="text-xl text-[#176B63] tracking-wide">{regSuccessData.patient_id}</strong>
-                </div>
+          {/* Standard Sign-In Form (Admin or Staff Login) */}
+          <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                {selectedPortal === "admin"
+                  ? "Admin Email or Username *"
+                  : "Staff ID (e.g. EMP-MNT-101) or Hospital Email *"}
+              </label>
+              <input
+                type="text"
+                required
+                value={loginIdentifier}
+                onChange={(e) => setLoginIdentifier(e.target.value)}
+                placeholder={
+                  selectedPortal === "admin"
+                    ? "admin@careops.hospital"
+                    : "EMP-MNT-101 or technician.rajesh@careops.hospital"
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono text-slate-900"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-bold text-slate-700">Password *</label>
                 <button
                   type="button"
                   onClick={() => {
-                    if (onEnterPatientPortal) {
-                      onEnterPatientPortal();
-                    } else {
-                      onLoginSuccess(regSuccessData.user, "my-requests");
-                    }
+                    setForgotIdentifier(loginIdentifier);
+                    setForgotStep("request");
+                    setForgotError(null);
+                    setForgotSuccess(null);
+                    setShowForgotModal(true);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-[#176B63] text-white font-bold text-xs cursor-pointer shadow-sm"
+                  className="text-[11px] font-semibold text-[#176B63] hover:underline cursor-pointer"
                 >
-                  Enter Patient Portal Now →
+                  Forgot Password?
                 </button>
               </div>
-            ) : (
-              <form onSubmit={handleRegisterPatientSubmit} className="space-y-3.5 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regName}
-                    onChange={(e) => setRegName(e.target.value)}
-                    placeholder="e.g. Eleanor Vance"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Phone Number *</label>
-                    <input
-                      type="tel"
-                      required
-                      value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value)}
-                      placeholder="+1-555-0192"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Email (Optional)</label>
-                    <input
-                      type="email"
-                      value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
-                      placeholder="patient@gmail.com"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Room Number (Optional)</label>
-                    <input
-                      type="text"
-                      value={regRoom}
-                      onChange={(e) => setRegRoom(e.target.value)}
-                      placeholder="e.g. 204"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Bed (Optional)</label>
-                    <input
-                      type="text"
-                      value={regBed}
-                      onChange={(e) => setRegBed(e.target.value)}
-                      placeholder="e.g. A"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Password *</label>
-                  <div className="relative">
-                    <input
-                      type={showRegPassword ? "text" : "password"}
-                      required
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                      placeholder="Create a secure password"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      {showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-bold text-xs transition-all cursor-pointer shadow-md shadow-[#176B63]/20"
-                >
-                  {isLoading ? "Creating Account..." : "Register Patient Account"}
-                </button>
-              </form>
-            )
-          ) : (
-            /* Standard Sign-In Form (Admin, Staff, or Patient Login) */
-            <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  {selectedPortal === "admin"
-                    ? "Admin Email or Username *"
-                    : selectedPortal === "staff"
-                    ? "Staff ID (e.g. EMP-MNT-101) or Hospital Email *"
-                    : "Patient ID (e.g. PAT-10001) or Registered Phone / Email *"}
-                </label>
+              <div className="relative">
                 <input
-                  type="text"
+                  type={showPassword ? "text" : "password"}
                   required
-                  value={loginIdentifier}
-                  onChange={(e) => setLoginIdentifier(e.target.value)}
-                  placeholder={
-                    selectedPortal === "admin"
-                      ? "admin@careops.hospital"
-                      : selectedPortal === "staff"
-                      ? "EMP-MNT-101 or technician.rajesh@careops.hospital"
-                      : "PAT-10001 or +1-555-0192"
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono text-slate-900"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-700">Password *</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotIdentifier(loginIdentifier);
-                      setForgotStep("request");
-                      setForgotError(null);
-                      setForgotSuccess(null);
-                      setShowForgotModal(true);
-                    }}
-                    className="text-[11px] font-semibold text-[#176B63] hover:underline cursor-pointer"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter password"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#176B63]/20"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>{loadingText}</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4" />
-                    <span>
-                      {selectedPortal === "admin"
-                        ? "Sign In to Admin Portal"
-                        : selectedPortal === "staff"
-                        ? "Sign In to Staff Workspace"
-                        : "Sign In to Patient Portal"}
-                    </span>
-                  </>
-                )}
-              </button>
-            </form>
-          )}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#176B63]/20"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{loadingText}</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="h-4 w-4" />
+                  <span>
+                    {selectedPortal === "admin"
+                      ? "Sign In to Admin Portal"
+                      : "Sign In to Staff Workspace"}
+                  </span>
+                </>
+              )}
+            </button>
+          </form>
 
           {/* Quick-Test Personas (Ensures immediate evaluation without typing errors) */}
           <div className="pt-3 border-t border-slate-100 space-y-2">
@@ -725,29 +489,13 @@ export function PortalLoginGateway({
                   </button>
                 </>
               )}
-
-              {selectedPortal === "patient" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => fillPreset("PAT-10001", "password123")}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Eleanor Vance (PAT-10001)
-                  </button>
-                  {onEnterPatientPortal && (
-                    <button
-                      type="button"
-                      onClick={() => onEnterPatientPortal()}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
-                    >
-                      Guest Bedside QR Mode
-                    </button>
-                  )}
-                </>
-              )}
             </div>
           </div>
+        </div>
+
+        {/* Informational Notice */}
+        <div className="text-center text-xs text-slate-400">
+          Bedside patient requests & tracking are accessed directly by scanning your room QR placard.
         </div>
       </main>
 

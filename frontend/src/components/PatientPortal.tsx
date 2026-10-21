@@ -637,8 +637,12 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
     }
 
     const trimmedEmail = patientEmail.trim();
-    if (trimmedEmail && !isValidEmail(trimmedEmail)) {
-      alert("Please enter a valid email address (e.g. patient@example.com) or leave it blank.");
+    if (!trimmedEmail) {
+      alert("Email address is required so we can send your Work Started and Work Finished confirmation receipts and live tracking link.");
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      alert("Please enter a valid email address (e.g. yourname@gmail.com).");
       return;
     }
 
@@ -1340,29 +1344,30 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
                     </p>
                   </div>
 
-                  {/* Patient Email Address (Optional / For Dispatch & Resolution Receipts) */}
+                  {/* Patient Email Address (Mandatory for Work Started & Finished Receipts) */}
                   <div>
                     <label className="text-xs font-bold text-[#0F172A] flex items-center justify-between mb-1">
                       <span className="flex items-center gap-1.5">
                         <Mail className="h-3.5 w-3.5 text-[#176B63]" />
-                        <span>Email Address (Optional)</span>
+                        <span>Client Email Address *</span>
                       </span>
                       <span className="text-[10px] text-[#16805D] font-bold bg-[#EDF7F2] px-2 py-0.5 rounded-full border border-[#A6E1CE]">
-                        Email Updates
+                        Required for Receipts
                       </span>
                     </label>
                     <div className="relative">
                       <input
                         type="email"
-                        placeholder="e.g. patient@example.com (for ticket confirmation & resolution receipt)"
+                        required
+                        placeholder="e.g. client@gmail.com (for Work Started & Finished receipts)"
                         value={patientEmail}
                         onChange={(e) => setPatientEmail(e.target.value)}
                         className="w-full p-3 rounded-2xl border-2 border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#176B63] pl-9"
                       />
                       <Mail className="h-4 w-4 text-[#64748B] absolute left-3 top-3.5" />
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-1">
-                      Optional: enter email to receive ticket confirmation, digital tracking link, and care team resolution notes.
+                    <p className="text-[11px] text-[#176B63] font-semibold mt-1">
+                      Mandatory: Automated emails will be dispatched to this address when work begins and when work finishes, including your tracking receipt.
                     </p>
                   </div>
                 </div>

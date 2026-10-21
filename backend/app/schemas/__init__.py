@@ -328,6 +328,18 @@ class StaffTicketCreate(BaseModel):
     category: str
     priority: str = "medium"
     assigned_staff_id: Optional[int] = None
+    patient_email: Optional[str] = None
+    patient_contact: Optional[str] = None
+
+class TicketContactUpdateRequest(BaseModel):
+    patient_email: Optional[str] = None
+    patient_contact: Optional[str] = None
+    resend_email: Optional[bool] = False
+
+class FollowupEmailRequest(BaseModel):
+    stage: str  # "work_started" | "work_finished"
+    recipient_email: Optional[str] = None
+    custom_notes: Optional[str] = None
 
 class TicketAcknowledgeRequest(BaseModel):
     note: Optional[str] = None
@@ -386,6 +398,8 @@ class TicketResponse(BaseModel):
     revised_eta: Optional[datetime] = None
     
     patient_contact: Optional[str] = None
+    patient_email: Optional[str] = None
+    patient_tracking_token: Optional[str] = None
     patient_feedback_rating: Optional[int] = None
     patient_feedback_comment: Optional[str] = None
     

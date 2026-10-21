@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Plus, Building, User, AlertTriangle } from "lucide-react";
+import { X, Plus, Building, User, AlertTriangle, Mail, Phone } from "lucide-react";
 import { Department, Room } from "@/lib/api";
 
 interface CreateTicketModalProps {
@@ -15,6 +15,8 @@ interface CreateTicketModalProps {
     room_number: string;
     category: string;
     priority: string;
+    patient_email?: string;
+    patient_contact?: string;
   }) => void;
 }
 
@@ -30,6 +32,8 @@ export function CreateTicketModal({
   const [roomNumber, setRoomNumber] = useState(rooms[0]?.room_number || "Room 204");
   const [category, setCategory] = useState("Ceiling Fan");
   const [priority, setPriority] = useState("medium");
+  const [patientEmail, setPatientEmail] = useState("");
+  const [patientContact, setPatientContact] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +45,8 @@ export function CreateTicketModal({
       room_number: roomNumber,
       category,
       priority,
+      patient_email: patientEmail.trim() || undefined,
+      patient_contact: patientContact.trim() || undefined,
     });
     onClose();
   };
@@ -139,12 +145,46 @@ export function CreateTicketModal({
         <div className="space-y-1">
           <label className="font-bold text-[#17212F]">Detailed Description</label>
           <textarea
-            rows={3}
+            rows={2}
             placeholder="Technical details, observed symptoms, patient reports..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full p-2.5 rounded-lg border border-[#E5E9EF]"
           />
+        </div>
+
+        {/* Client / Patient Notification Details */}
+        <div className="rounded-xl p-3 bg-[#F0F7F6] border border-[#176B63]/20 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-[#176B63] flex items-center gap-1.5 text-xs">
+              <Mail className="h-3.5 w-3.5" /> Client / Patient Follow-up Notifications
+            </span>
+            <span className="text-[10px] text-[#556987]">Optional</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-[#17212F]">Client Email</label>
+              <input
+                type="email"
+                placeholder="client@gmail.com"
+                value={patientEmail}
+                onChange={(e) => setPatientEmail(e.target.value)}
+                className="w-full p-2 bg-white rounded-lg border border-[#D0D5DD] focus:border-[#176B63] focus:outline-none text-xs"
+              />
+              <p className="text-[10px] text-[#667085]">Receives &quot;Work Started&quot; &amp; &quot;Work Finished&quot; emails</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-[#17212F]">Phone / WhatsApp</label>
+              <input
+                type="tel"
+                placeholder="+91 98765 43210"
+                value={patientContact}
+                onChange={(e) => setPatientContact(e.target.value)}
+                className="w-full p-2 bg-white rounded-lg border border-[#D0D5DD] focus:border-[#176B63] focus:outline-none text-xs"
+              />
+              <p className="text-[10px] text-[#667085]">For SMS / WhatsApp status updates</p>
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E9EF]">

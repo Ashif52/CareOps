@@ -16,6 +16,24 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 465
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_USE_SSL
+        value: "true"
+      - key: WORK_EMAIL
+        sync: false
+      - key: MAINTENANCE_DEPARTMENT_EMAIL
+        sync: false
 
 databases:
   - name: careops-postgres
