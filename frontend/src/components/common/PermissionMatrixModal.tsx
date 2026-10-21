@@ -72,11 +72,14 @@ export function PermissionMatrixModal({
       try {
         // 1. Fetch matrix catalog
         const catalogRes: any = await api.getPermissionMatrixCatalog(isSuperadminTarget);
-        if (Array.isArray(catalogRes)) {
-          setModules(catalogRes);
+        const catalogList: ModuleItem[] = Array.isArray(catalogRes)
+          ? catalogRes
+          : (catalogRes?.catalog || []);
+        if (catalogList && catalogList.length > 0) {
+          setModules(catalogList);
           // Default all expanded
           const exp: { [id: string]: boolean } = {};
-          catalogRes.forEach((m) => {
+          catalogList.forEach((m) => {
             exp[m.id] = true;
           });
           setExpandedModules(exp);
@@ -87,8 +90,15 @@ export function PermissionMatrixModal({
           ? await api.getAdminPermissions(userId)
           : await api.getUserPermissionsMatrix(userId);
 
-        const activePerms = userRes?.assigned_permissions || userRes?.permissions || [];
-        const roleDefaults = userRes?.default_role_permissions || [];
+        const activePerms =
+          userRes?.assigned_permissions ||
+          userRes?.effective_permissions ||
+          userRes?.permissions ||
+          [];
+        const roleDefaults =
+          userRes?.default_role_permissions ||
+          userRes?.base_permissions ||
+          [];
 
         setAssignedPermissions(activePerms);
         setOriginalPermissions(activePerms);

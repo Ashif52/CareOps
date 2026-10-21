@@ -11,9 +11,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  KeyRound
 } from "lucide-react";
 import { User } from "@/lib/api";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 
 interface HeaderProps {
   currentTab: string;
@@ -38,6 +40,7 @@ export function Header({
 }: HeaderProps) {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const breadcrumbsMap: Record<string, string> = {
     overview: "Command Center / Operations Overview",
@@ -206,7 +209,18 @@ export function Header({
                   </button>
                 ))}
 
-                <div className="pt-1.5 border-t border-[#E2E8F0] mt-1">
+                <div className="pt-1.5 border-t border-[#E2E8F0] mt-1 space-y-1">
+                  <button
+                    onClick={() => {
+                      setShowRoleMenu(false);
+                      setShowChangePassword(true);
+                    }}
+                    className="w-full text-left p-2 rounded-lg hover:bg-slate-100 text-slate-800 font-bold flex items-center justify-between transition-colors cursor-pointer text-xs"
+                  >
+                    <span>Change My Password</span>
+                    <KeyRound className="h-3.5 w-3.5 text-[#176B63]" />
+                  </button>
+
                   <button
                     onClick={() => {
                       setShowRoleMenu(false);
@@ -232,6 +246,13 @@ export function Header({
           <span>New Ticket</span>
         </button>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        userRole={currentUser?.role}
+      />
     </header>
   );
 }

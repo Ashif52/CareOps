@@ -4,22 +4,24 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, desc, func
 from jose import jwt, JWTError
 
 from app.config import settings
 from app.database import get_db
-from app.models import Room, Department, Ticket, TicketNote, User
+from app.models import Room, Department, Ticket, TicketNote, User, AuditLog
 from app.schemas import (
     PatientTicketCreate, PatientGuestSessionRequest,
-    PatientVerifySessionRequest, PatientSessionResponse
+    PatientVerifySessionRequest, PatientSessionResponse,
+    PatientRegisterRequest, PatientProfileUpdate
 )
 from app.services.ticket_service import TicketService
 from app.services.storage_service import StorageService
 from app.services.realtime_service import realtime_hub
-from app.services.auth_service import create_access_token
+from app.services.auth_service import create_access_token, get_password_hash, get_current_patient
 from app.services.notification_service import NotificationService
 
 class PatientEscalateRequest(BaseModel):
@@ -162,14 +164,36 @@ def verify_patient_session(payload: PatientVerifySessionRequest, db: Session = D
 from app.services.whatsapp_service import normalize_to_e164, is_valid_e164
 
 @router.post("/submit")
-async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depends(get_db)):
+async def submit_patient_ticket(
+    payload: PatientTicketCreate,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
     """
-    Submits a patient complaint from a room QR code.
+    Submits a patient complaint from a room QR code or authenticated patient portal.
     - Resolves room strictly on backend from token.
     - Enforces mandatory mobile phone number validated to E.164.
+    - Links authenticated patient account when token is provided.
     - Generates cryptographically secure tracking token and absolute HTTPS tracking link.
-    - Sends WhatsApp acknowledgement via configured integration.
+    - Dispatches email confirmation to patient and staff notifications.
     """
+    # 0. Check authenticated patient identity if present
+    patient_user_id = None
+    patient_email = payload.patient_email.strip().lower() if payload.patient_email else None
+    if authorization and "bearer " in authorization.lower():
+        token = authorization.split()[-1].strip()
+        try:
+            token_payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            sub = token_payload.get("sub")
+            if sub and str(sub).isdigit():
+                auth_user = db.query(User).filter(User.id == int(sub)).first()
+                if auth_user:
+                    patient_user_id = auth_user.id
+                    if not patient_email and auth_user.email:
+                        patient_email = auth_user.email
+        except Exception:
+            pass
+
     # 1. Idempotency Check
     if payload.idempotency_key:
         _clean_idempotency_cache()
@@ -234,7 +258,9 @@ async def submit_patient_ticket(payload: PatientTicketCreate, db: Session = Depe
         voice_url=voice_url,
         voice_transcription=payload.voice_transcription,
         patient_contact=normalized_phone,
-        photo_url=photo_url
+        photo_url=photo_url,
+        patient_user_id=patient_user_id,
+        patient_email=patient_email
     )
 
     staff_name = ticket.assigned_staff.name if ticket.assigned_staff else None
@@ -386,15 +412,25 @@ def get_patient_ticket_status(
             {
                 "timestamp": note.created_at.isoformat(),
                 "author": note.author_name,
-                "message": note.content
+                "message": note.content,
+                "content": note.content,
+                "is_internal": False
+            }
+            for note in public_notes
+        ],
+        "notes": [
+            {
+                "timestamp": note.created_at.isoformat(),
+                "author": note.author_name,
+                "message": note.content,
+                "content": note.content,
+                "is_internal": False
             }
             for note in public_notes
         ]
     }
     if staff:
-        res["assigned_staff_name"] = staff.name
         res["assigned_staff_designation"] = staff.designation if staff.designation else "Hospital Care Specialist"
-        res["assigned_staff_avatar"] = staff.avatar_url
     return res
 
 @router.get("/ticket/{ticket_number}/stream")
@@ -508,4 +544,201 @@ async def escalate_patient_ticket(
         "ticket_number": ticket.ticket_number,
         "escalation_level": ticket.escalation_level,
         "dispatch": dispatch_result
+    }
+
+# ----------------- 5. Patient Account Self-Registration & Portal -----------------
+
+@router.post("/register")
+def register_patient_account(
+    payload: PatientRegisterRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Provisions a registered patient account in the centralized authoritative user database.
+    Assigns a unique Patient ID (e.g. PAT-10492) and hashes password securely.
+    """
+    clean_email = payload.email.lower().strip()
+    clean_phone = payload.phone.strip()
+    clean_name = payload.name.strip()
+
+    if not clean_email or "@" not in clean_email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
+    # Check for existing email or phone
+    existing = db.query(User).filter(
+        or_(
+            func.lower(User.email) == clean_email,
+            User.phone == clean_phone
+        )
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="An account with this email address or phone number already exists. Please log in."
+        )
+
+    # Generate unique Patient ID (e.g., PAT-58392)
+    import random
+    rand_num = random.randint(10000, 99999)
+    pat_id = f"PAT-{rand_num}"
+    while db.query(User).filter(User.patient_id == pat_id).first():
+        pat_id = f"PAT-{random.randint(10000, 99999)}"
+
+    pw_hash = get_password_hash(payload.password)
+    new_patient = User(
+        name=clean_name,
+        email=clean_email,
+        phone=clean_phone,
+        patient_id=pat_id,
+        employee_id=pat_id,  # Mirror so either identifier works on login
+        role="patient",
+        designation="Hospital Patient",
+        hashed_password=pw_hash,
+        account_status="active",
+        is_active=True,
+        failed_login_attempts=0,
+        token_version=1,
+        avatar_url=None
+    )
+    db.add(new_patient)
+    db.flush()
+
+    audit = AuditLog(
+        action="PATIENT_ACCOUNT_REGISTERED",
+        actor_id=new_patient.id,
+        actor_name=new_patient.name,
+        actor_role="patient",
+        details=json.dumps({"patient_id": pat_id, "email": clean_email, "phone": clean_phone})
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(new_patient)
+
+    token = create_access_token(data={
+        "sub": str(new_patient.id),
+        "role": "patient",
+        "dept": None,
+        "v": 1
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": new_patient.id,
+            "patient_id": new_patient.patient_id,
+            "name": new_patient.name,
+            "email": new_patient.email,
+            "phone": new_patient.phone,
+            "role": new_patient.role,
+            "account_status": new_patient.account_status,
+            "created_at": new_patient.created_at.isoformat()
+        }
+    }
+
+
+@router.get("/my-tickets")
+def get_patient_my_tickets(
+    current_patient: User = Depends(get_current_patient),
+    db: Session = Depends(get_db)
+):
+    """
+    Authenticated Patient Portal view: Returns all tickets submitted by this patient.
+    Strictly scoped to their patient account ID, registered email, or contact phone.
+    Guarantees zero exposure of internal staff notes, staff IDs, or other patients' records.
+    """
+    query = db.query(Ticket).filter(
+        or_(
+            Ticket.patient_user_id == current_patient.id,
+            Ticket.patient_contact == current_patient.phone,
+            Ticket.patient_email == current_patient.email
+        )
+    ).order_by(desc(Ticket.created_at)).all()
+
+    results = []
+    for t in query:
+        dept = db.query(Department).filter(Department.id == t.department_id).first()
+        dept_name = dept.name if dept else t.department_id.capitalize()
+        staff_display = t.assigned_staff.name if t.assigned_staff else "Care Team Dispatched"
+
+        # Filter strictly for patient-visible notes (is_internal == False)
+        public_notes = [
+            {
+                "time": n.created_at.strftime("%I:%M %p") if n.created_at else "",
+                "message": n.content,
+                "author": n.author_name if n.author_name != "System" else "CareOps Team"
+            }
+            for n in t.notes if not n.is_internal
+        ]
+
+        results.append({
+            "id": t.id,
+            "ticket_number": t.ticket_number,
+            "title": t.title,
+            "description": t.description,
+            "department_id": t.department_id,
+            "department_name": dept_name,
+            "room_number": t.room_number,
+            "category": t.category,
+            "priority": t.priority,
+            "status": t.status,
+            "assigned_staff_name": staff_display,
+            "estimated_arrival_minutes": t.estimated_arrival_minutes,
+            "resolution_summary": t.resolution_summary,
+            "patient_feedback_rating": t.patient_feedback_rating,
+            "patient_feedback_comment": t.patient_feedback_comment,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+            "updates": public_notes
+        })
+
+    return results
+
+
+@router.put("/profile")
+def update_patient_profile(
+    payload: PatientProfileUpdate,
+    current_patient: User = Depends(get_current_patient),
+    db: Session = Depends(get_db)
+):
+    """Allows patient to update permitted contact details."""
+    updates = {}
+    if payload.name and payload.name.strip():
+        current_patient.name = payload.name.strip()
+        updates["name"] = current_patient.name
+    if payload.phone and payload.phone.strip():
+        current_patient.phone = payload.phone.strip()
+        updates["phone"] = current_patient.phone
+    if payload.email and payload.email.strip():
+        clean_email = payload.email.strip().lower()
+        if "@" in clean_email:
+            existing = db.query(User).filter(User.email == clean_email, User.id != current_patient.id).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="This email is already in use by another account.")
+            current_patient.email = clean_email
+            updates["email"] = current_patient.email
+
+    audit = AuditLog(
+        action="PATIENT_PROFILE_UPDATED",
+        actor_id=current_patient.id,
+        actor_name=current_patient.name,
+        actor_role="patient",
+        details=json.dumps(updates)
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(current_patient)
+
+    return {
+        "success": True,
+        "message": "Contact details updated successfully.",
+        "user": {
+            "id": current_patient.id,
+            "patient_id": current_patient.patient_id,
+            "name": current_patient.name,
+            "email": current_patient.email,
+            "phone": current_patient.phone
+        }
     }

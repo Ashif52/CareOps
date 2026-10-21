@@ -82,7 +82,7 @@ export function RoomQRPlacardModal({
     const url = canvas.toDataURL("image/png");
     const a = document.createElement("a");
     a.href = url;
-    a.download = `CareOps-Bedside-QR-${room.room_number.replace(/\s+/g, "_")}.png`;
+    a.download = `HappyCare-Bedside-QR-${room.room_number.replace(/\s+/g, "_")}.png`;
     a.click();
   };
 
@@ -164,7 +164,7 @@ export function RoomQRPlacardModal({
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E8F3F1] border border-[#A7D7D1] text-[#176B63] text-xs font-bold uppercase tracking-wider">
               <ShieldCheck className="h-4 w-4" />
-              <span>CareOps Hospital Assist</span>
+              <span>Happy Care Hospital Assist</span>
             </div>
             <h2 className="text-xl font-black text-[#17212F] tracking-tight">
               {room.room_number}

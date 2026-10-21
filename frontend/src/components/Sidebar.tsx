@@ -20,7 +20,9 @@ import {
   Database,
   HeartHandshake,
   Star,
-  LogOut
+  LogOut,
+  Mail,
+  Users
 } from "lucide-react";
 import { User } from "@/lib/api";
 
@@ -90,6 +92,8 @@ export function Sidebar({
       { id: "ai-verify", label: "AI Verification", icon: Sparkles, badge: "AI Core" },
       { id: "sla", label: "Escalation & SLA", icon: ClockAlert },
       { id: "departments", label: "Departments & Staff", icon: Building2 },
+      { id: "patient-accounts", label: "Patient Accounts", icon: Users },
+      { id: "emails", label: "Email & SMTP Delivery", icon: Mail, badge: "SMTP" },
       { id: "rooms", label: "QR Room Ops", icon: QrCode },
       { id: "analytics", label: "Analytics & Reports", icon: BarChart3 },
       { id: "nps", label: "NPS & Patient Voice", icon: HeartHandshake, badge: "Patient" },
@@ -132,7 +136,7 @@ export function Sidebar({
           {!collapsed && (
             <div className="flex flex-col">
               <span className="font-extrabold text-base tracking-tight text-[#0F172A] flex items-center gap-1">
-                CareOps <span className="text-[#176B63]">AI</span>
+                Happy <span className="text-[#176B63]">Care</span>
               </span>
               <span className="text-[10px] text-[#475569] tracking-wider font-extrabold uppercase">
                 {userRole === "superadmin"
@@ -224,12 +228,18 @@ export function Sidebar({
       <div className="p-3 border-t border-[#E2E8F0] bg-[#F8FAFC]">
         <div className="flex items-center gap-2.5">
           <div className="relative">
-            <img
-              src={currentUser?.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
-              alt="Avatar"
-              className="h-8.5 w-8.5 rounded-full object-cover border border-[#94A3B8]"
-            />
-            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-[#16805D] ring-2 ring-white" />
+            <div className="h-8.5 w-8.5 rounded-lg bg-[#E8F3F1] text-[#176B63] border border-[#CCFBF1] flex items-center justify-center font-black text-xs shadow-sm">
+              {currentUser?.name
+                ? currentUser.name
+                    .split(" ")
+                    .filter(Boolean)
+                    .map((n: string) => n[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()
+                : "U"}
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[#16805D] ring-2 ring-white" />
           </div>
           {!collapsed && (
             <div className="flex-1 overflow-hidden">

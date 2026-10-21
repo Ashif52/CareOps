@@ -7,14 +7,42 @@ from typing import Tuple, Optional
 from fastapi import UploadFile, HTTPException
 from app.config import settings
 
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm", ".mov", ".wav", ".mp3", ".ogg", ".pdf"}
+ALLOWED_MIME_TYPES = {
+    "image/jpeg", "image/png", "image/webp", "image/gif",
+    "video/mp4", "video/webm", "video/quicktime",
+    "audio/webm", "audio/wav", "audio/mpeg", "audio/ogg",
+    "application/pdf", "application/octet-stream"
+}
+
 class StorageService:
+    @staticmethod
+    def _sanitize_subfolder(subfolder: str) -> str:
+        """Prevent path traversal in subfolder argument"""
+        clean = "".join(c for c in subfolder if c.isalnum() or c in ("-", "_"))
+        return clean or "evidence"
+
     @staticmethod
     def save_upload_file(file: UploadFile, subfolder: str = "evidence") -> Tuple[str, str, int]:
         """Saves an UploadFile, returns (relative_url, sha256_hash, file_size_bytes)"""
-        target_dir = Path(settings.UPLOAD_DIR) / subfolder
+        clean_subfolder = StorageService._sanitize_subfolder(subfolder)
+        target_dir = Path(settings.UPLOAD_DIR) / clean_subfolder
         target_dir.mkdir(parents=True, exist_ok=True)
         
         file_ext = Path(file.filename).suffix.lower() if file.filename else ".bin"
+        if file_ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported or dangerous file extension '{file_ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            )
+        
+        # Verify content_type header if provided
+        if file.content_type and file.content_type.lower() not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid MIME content type: '{file.content_type}'"
+            )
+
         filename = f"{uuid.uuid4().hex}{file_ext}"
         file_path = target_dir / filename
         
@@ -31,13 +59,14 @@ class StorageService:
                     raise HTTPException(status_code=413, detail="File size exceeds allowable maximum (50MB)")
                 f.write(chunk)
                 
-        relative_url = f"/uploads/{subfolder}/{filename}"
+        relative_url = f"/uploads/{clean_subfolder}/{filename}"
         return relative_url, sha256.hexdigest(), size
 
     @staticmethod
     def save_base64_data(base64_data: str, subfolder: str = "evidence", default_ext: str = ".jpg") -> Tuple[str, str, int]:
         """Decodes and saves base64 data URI (e.g. data:image/jpeg;base64,...)"""
-        target_dir = Path(settings.UPLOAD_DIR) / subfolder
+        clean_subfolder = StorageService._sanitize_subfolder(subfolder)
+        target_dir = Path(settings.UPLOAD_DIR) / clean_subfolder
         target_dir.mkdir(parents=True, exist_ok=True)
         
         ext = default_ext
@@ -73,5 +102,6 @@ class StorageService:
         with open(file_path, "wb") as f:
             f.write(file_bytes)
             
-        relative_url = f"/uploads/{subfolder}/{filename}"
+        relative_url = f"/uploads/{clean_subfolder}/{filename}"
         return relative_url, file_hash, size
+

@@ -442,23 +442,15 @@ export default function TrackClient({
                   <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F8FAFC] to-[#EEF4FD] border-2 border-[#BFDBFE] space-y-3 shadow-xs">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        {ticket.assigned_staff_avatar ? (
-                          <img
-                            src={ticket.assigned_staff_avatar}
-                            alt={ticket.assigned_staff_name || "Staff"}
-                            className="h-12 w-12 rounded-2xl object-cover border-2 border-[#3868C9] shadow-xs"
-                          />
-                        ) : (
-                          <div className="h-12 w-12 rounded-2xl bg-[#3868C9] text-white flex items-center justify-center font-black text-sm border-2 border-[#1E40AF] shadow-xs">
-                            {ticket.assigned_staff_name
-                              ? ticket.assigned_staff_name
-                                  .split(" ")
-                                  .map((n: string) => n[0])
-                                  .join("")
-                                  .slice(0, 2)
-                              : "ST"}
-                          </div>
-                        )}
+                        <div className="h-12 w-12 rounded-2xl bg-[#3868C9] text-white flex items-center justify-center font-black text-sm border-2 border-[#1E40AF] shadow-xs">
+                          {ticket.assigned_staff_name
+                            ? ticket.assigned_staff_name
+                                .split(" ")
+                                .map((n: string) => n[0])
+                                .join("")
+                                .slice(0, 2)
+                            : "ST"}
+                        </div>
                         <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#16805D] border-2 border-white rounded-full flex items-center justify-center text-[9px] text-white font-bold">
                           ✓
                         </span>

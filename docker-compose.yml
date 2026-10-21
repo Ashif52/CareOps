@@ -4,15 +4,15 @@ services:
     container_name: careops-postgres
     restart: always
     environment:
-      POSTGRES_USER: careops
-      POSTGRES_PASSWORD: careopspassword123
-      POSTGRES_DB: careops
+      POSTGRES_USER: ${POSTGRES_USER:-careops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-careops}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U careops -d careops"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-careops} -d ${POSTGRES_DB:-careops}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,8 +24,10 @@ services:
     container_name: careops-backend
     restart: always
     environment:
-      - DATABASE_URL=postgresql://careops:careopspassword123@postgres:5432/careops
-      - SECRET_KEY=careops_super_secret_jwt_key_2026
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-careops}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-careops}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=production
+      - DEBUG_MODE=false
       - PORT=8000
     ports:
       - "8000:8000"

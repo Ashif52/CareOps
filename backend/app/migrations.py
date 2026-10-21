@@ -48,8 +48,12 @@ def run_migrations():
             ("supervisor_id", "INTEGER"),
             ("mobile_number", "VARCHAR(50)"),
             ("is_demo", bool_type),
+            ("token_version", "INTEGER DEFAULT 1"),
+            ("patient_id", "VARCHAR(50)"),
         ],
         "tickets": [
+            ("patient_user_id", "INTEGER"),
+            ("patient_email", "VARCHAR(150)"),
             ("patient_tracking_token", "VARCHAR(100)"),
             ("assigned_at", datetime_type),
             ("en_route_at", datetime_type),

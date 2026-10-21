@@ -53,12 +53,15 @@ class User(Base):
     supervisor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     is_demo = Column(Boolean, default=False)
     
+    token_version = Column(Integer, default=1, nullable=False)
+    patient_id = Column(String(50), unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now)
     
     department = relationship("Department", back_populates="users", foreign_keys=[department_id])
     assigned_supervisor = relationship("User", remote_side=[id], foreign_keys=[supervisor_id], backref="assigned_staff_members")
     assigned_tickets = relationship("Ticket", back_populates="assigned_staff", foreign_keys="Ticket.assigned_staff_id")
     supervised_tickets = relationship("Ticket", back_populates="assigned_supervisor", foreign_keys="Ticket.assigned_supervisor_id")
+    patient_tickets = relationship("Ticket", back_populates="patient_user", foreign_keys="Ticket.patient_user_id")
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -131,7 +134,9 @@ class Ticket(Base):
     revised_eta = Column(DateTime(timezone=True), nullable=True)
     
     # Patient interaction & security
+    patient_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     patient_contact = Column(String(50), nullable=True)
+    patient_email = Column(String(150), nullable=True, index=True)
     patient_tracking_token = Column(String(100), unique=True, index=True, nullable=True)
     patient_feedback_rating = Column(Integer, nullable=True)
     patient_feedback_comment = Column(Text, nullable=True)
@@ -144,12 +149,14 @@ class Ticket(Base):
     room = relationship("Room", back_populates="tickets")
     assigned_staff = relationship("User", back_populates="assigned_tickets", foreign_keys=[assigned_staff_id])
     assigned_supervisor = relationship("User", back_populates="supervised_tickets", foreign_keys=[assigned_supervisor_id])
+    patient_user = relationship("User", back_populates="patient_tickets", foreign_keys=[patient_user_id])
     
     evidences = relationship("Evidence", back_populates="ticket", cascade="all, delete-orphan")
     ai_verifications = relationship("AIVerificationJob", back_populates="ticket", cascade="all, delete-orphan")
     notes = relationship("TicketNote", back_populates="ticket", cascade="all, delete-orphan")
     escalations = relationship("EscalationLog", back_populates="ticket", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="ticket", cascade="all, delete-orphan")
+    email_logs = relationship("EmailLog", back_populates="ticket", cascade="all, delete-orphan")
 
 class Evidence(Base):
     __tablename__ = "evidences"
@@ -286,6 +293,29 @@ class AuditLog(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
     
     ticket = relationship("Ticket", back_populates="audit_logs")
+    actor = relationship("User", foreign_keys=[actor_id])
+
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_email = Column(String(255), nullable=False, index=True)
+    recipient_name = Column(String(100), nullable=True)
+    subject = Column(String(255), nullable=False)
+    body_html = Column(Text, nullable=False)
+    body_text = Column(Text, nullable=True)
+    email_type = Column(String(50), nullable=False, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(30), default="queued", index=True)  # "queued", "sent", "failed", "retrying"
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    smtp_host_used = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    
+    ticket = relationship("Ticket", back_populates="email_logs")
 
 
 # ==============================================================================

@@ -283,6 +283,21 @@ def get_tickets(
     tickets = query.order_by(desc(Ticket.created_at)).offset(skip).limit(limit).all()
     return [enrich_ticket_response(t, db) for t in tickets]
 
+def check_ticket_access(ticket: Ticket, user: User):
+    if user.role in ["admin", "superadmin"]:
+        return
+    if user.role == "supervisor":
+        if user.department_id and ticket.department_id != user.department_id and ticket.assigned_supervisor_id != user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access restricted: Ticket belongs to a different department.")
+        return
+    if user.role == "staff":
+        if user.department_id and ticket.department_id != user.department_id and ticket.assigned_staff_id != user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access restricted: Staff can only access requests assigned to their department.")
+        return
+    if user.role == "patient":
+        if ticket.patient_user_id != user.id and ticket.patient_contact != user.phone and ticket.patient_email != user.email:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access restricted: You can only view your own service requests.")
+
 @router.get("/{ticket_id}", response_model=TicketResponse)
 def get_ticket_detail(
     ticket_id: int,
@@ -292,6 +307,7 @@ def get_ticket_detail(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    check_ticket_access(ticket, current_user)
     return enrich_ticket_response(ticket, db)
 
 @router.post("", response_model=TicketResponse)
@@ -361,6 +377,9 @@ async def acknowledge_ticket(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role == "patient":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
+    check_ticket_access(ticket, current_user)
     updated = TicketService.acknowledge_ticket(db, ticket, current_user, payload.note)
 
     # Real-time event dispatch
@@ -381,6 +400,9 @@ async def start_work(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role == "patient":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
+    check_ticket_access(ticket, current_user)
     updated = TicketService.start_work(db, ticket, current_user, payload.note)
 
     # Real-time event dispatch
@@ -401,6 +423,9 @@ async def submit_resolution(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role == "patient":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
+    check_ticket_access(ticket, current_user)
     updated = TicketService.submit_resolution(
         db, ticket, current_user, 
         payload.resolution_summary, 
@@ -446,6 +471,9 @@ async def report_delay(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role == "patient":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
+    check_ticket_access(ticket, current_user)
         
     ticket.delay_reason = payload.delay_reason
     ticket.revised_eta = datetime.now(timezone.utc) + timedelta(minutes=payload.revised_eta_minutes)
@@ -489,6 +517,7 @@ def add_note(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    check_ticket_access(ticket, current_user)
         
     note = TicketNote(
         ticket_id=ticket.id,

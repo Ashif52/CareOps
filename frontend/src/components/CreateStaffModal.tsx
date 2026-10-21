@@ -40,6 +40,7 @@ export function CreateStaffModal({
   const [supervisorsList, setSupervisorsList] = useState<any[]>([]);
   const [initialPassword, setInitialPassword] = useState("TempPass2026!");
   const [requirePasswordChange, setRequirePasswordChange] = useState(true);
+  const [sendInvitationEmail, setSendInvitationEmail] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -347,6 +348,29 @@ export function CreateStaffModal({
                 onChange={(e) => setRequirePasswordChange(e.target.checked)}
                 className="h-5 w-5 accent-[#176B63] rounded cursor-pointer"
               />
+            </div>
+
+            <div className="p-3 bg-[#E8F3F1] rounded-xl border border-[#99F6E4] flex items-center justify-between mt-2">
+              <div className="text-xs">
+                <span className="font-extrabold text-[#176B63] block flex items-center gap-1.5">
+                  <Mail className="h-4 w-4" />
+                  Dispatch Account Invitation Email to Work Mailbox
+                </span>
+                <span className="text-[#334155]">
+                  Sends welcome letter with Employee ID, registered work email, assigned department, and credentials
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={sendInvitationEmail}
+                onChange={(e) => setSendInvitationEmail(e.target.checked)}
+                className="h-5 w-5 accent-[#176B63] rounded cursor-pointer"
+              />
+            </div>
+
+            <div className="p-2.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] text-[11px] text-[#64748B] leading-relaxed">
+              <span className="font-bold text-[#0F172A]">Staff Email Assignment: </span>
+              Assigns this official email address in the database for ticket dispatch and security alerts. Note: entering an address here assigns an existing mailbox (Mode 1); organizational mailboxes should be provisioned in your email provider console (Mode 2).
             </div>
           </div>
 

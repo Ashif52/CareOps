@@ -30,7 +30,7 @@ def seed_database():
                     role="superadmin",
                     department_id=None,
                     phone="+91 98765 00000",
-                    avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+                    avatar_url=None,
                     hashed_password=pw_hash
                 )
                 db.add(superadmin)
@@ -58,7 +58,7 @@ def seed_database():
             role="admin",
             department_id=None,
             phone="+91 98765 43210",
-            avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            avatar_url=None,
             hashed_password=pw_hash
         )
         superadmin = User(
@@ -67,7 +67,7 @@ def seed_database():
             role="superadmin",
             department_id=None,
             phone="+91 98765 00000",
-            avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            avatar_url=None,
             hashed_password=pw_hash
         )
         db.add_all([admin, superadmin])
@@ -79,7 +79,7 @@ def seed_database():
             role="supervisor",
             department_id=None,
             phone="+91 98765 11111",
-            avatar_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+            avatar_url=None,
             hashed_password=pw_hash
         )
         sup_nur = User(
@@ -88,7 +88,7 @@ def seed_database():
             role="supervisor",
             department_id=None,
             phone="+91 98765 22222",
-            avatar_url="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150",
+            avatar_url=None,
             hashed_password=pw_hash
         )
         db.add_all([sup_mnt, sup_nur])
@@ -161,7 +161,7 @@ def seed_database():
                 role="staff",
                 department_id="maintenance",
                 phone="+91 98765 33301",
-                avatar_url="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             ),
             User(
@@ -170,7 +170,7 @@ def seed_database():
                 role="staff",
                 department_id="maintenance",
                 phone="+91 98765 33302",
-                avatar_url="https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             ),
             User(
@@ -179,7 +179,7 @@ def seed_database():
                 role="staff",
                 department_id="nursing",
                 phone="+91 98765 33303",
-                avatar_url="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             ),
             User(
@@ -188,7 +188,7 @@ def seed_database():
                 role="staff",
                 department_id="nursing",
                 phone="+91 98765 33304",
-                avatar_url="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             ),
             User(
@@ -197,7 +197,7 @@ def seed_database():
                 role="staff",
                 department_id="housekeeping",
                 phone="+91 98765 33305",
-                avatar_url="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             ),
             User(
@@ -206,7 +206,7 @@ def seed_database():
                 role="staff",
                 department_id="billing",
                 phone="+91 98765 33306",
-                avatar_url="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             ),
             User(
@@ -215,7 +215,7 @@ def seed_database():
                 role="staff",
                 department_id="pharmacy",
                 phone="+91 98765 33307",
-                avatar_url="https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150",
+                avatar_url=None,
                 hashed_password=pw_hash
             )
         ]

@@ -32,7 +32,8 @@ def test_user_self_registration_and_login():
     data = res.json()
     assert "access_token" in data
     assert data["user"]["email"] == test_email
-    assert data["user"]["role"] == "admin"
+    # Secure role enforcement: unauthenticated public registration cannot grant admin privileges
+    assert data["user"]["role"] == "staff"
     assert data["user"]["name"] == "Ashif Registration Test"
 
     # 2. Verify subsequent login with newly created credentials

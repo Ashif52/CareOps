@@ -438,7 +438,7 @@ export function TicketTable({
             Showing <strong className="text-[#17212F]">{filteredTickets.length}</strong> of{" "}
             <strong>{tickets.length}</strong> total operational tickets
           </span>
-          <span className="text-[11px]">CareOps Automated SLA Enforcement Active</span>
+          <span className="text-[11px]">Happy Care Automated SLA Enforcement Active</span>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import {
   ShieldCheck,
+  Building2,
   User,
   Lock,
   ArrowRight,
@@ -12,11 +13,16 @@ import {
   EyeOff,
   Sparkles,
   ShieldAlert,
-  Building2,
   CheckCircle2,
   UserPlus,
   Loader2,
-  QrCode
+  QrCode,
+  HeartHandshake,
+  Stethoscope,
+  X,
+  Send,
+  Phone,
+  Mail
 } from "lucide-react";
 import { api, setStoredToken, User as UserType } from "@/lib/api";
 
@@ -29,173 +35,103 @@ export function PortalLoginGateway({
   onLoginSuccess,
   onEnterPatientPortal,
 }: PortalLoginGatewayProps) {
-  const [authMode, setAuthMode] = useState<"signin" | "register">("signin");
-  const [email, setEmail] = useState("");
+  // Exactly Three Main Portals
+  const [selectedPortal, setSelectedPortal] = useState<"admin" | "staff" | "patient">("admin");
+
+  // Patient Sub-mode
+  const [patientMode, setPatientMode] = useState<"login" | "register">("login");
+
+  // Shared Credential Fields
+  const [loginIdentifier, setLoginIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingText, setLoadingText] = useState("Sign In to Workspace");
+  const [loadingText, setLoadingText] = useState("Authenticating...");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activePersona, setActivePersona] = useState<string>("");
 
-  // Pre-warm the backend as soon as the user opens the login screen
+  // Patient Registration Fields
+  const [regName, setRegName] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regRoom, setRegRoom] = useState("");
+  const [regBed, setRegBed] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [regSuccessData, setRegSuccessData] = useState<{
+    patient_id: string;
+    token: string;
+    user: any;
+  } | null>(null);
+
+  // Forgot Password Modal
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotToken, setForgotToken] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotStep, setForgotStep] = useState<"request" | "reset">("request");
+  const [isSubmittingForgot, setIsSubmittingForgot] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
+
+  // Pre-warm backend
   useEffect(() => {
     api.warmup();
   }, []);
 
-  // Progressive feedback while backend is waking up from sleep
-  useEffect(() => {
-    let t1: any, t2: any;
-    if (isLoading) {
-      setLoadingText("Verifying Credentials...");
-      t1 = setTimeout(() => {
-        setLoadingText("Connecting to Cloud Backend (waking up)...");
-      }, 3500);
-      t2 = setTimeout(() => {
-        setLoadingText("Booting Service... almost ready...");
-      }, 15000);
-    } else {
-      setLoadingText("Sign In to Workspace");
-    }
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [isLoading]);
-
-  // Registration state
-  const [regName, setRegName] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regRole, setRegRole] = useState("staff");
-  const [regDepartment, setRegDepartment] = useState("maintenance");
-  const [regDesignation, setRegDesignation] = useState("Hospital Operations Specialist");
-  const [showRegPassword, setShowRegPassword] = useState(false);
-
-  const demoPersonas = [
-    {
-      id: "superadmin",
-      label: "System Superadmin (Root)",
-      name: "System Superadmin",
-      email: "superadmin@careops.hospital",
-      role: "superadmin",
-      badge: "Superadmin Only",
-      badgeColor: "bg-[#FDF2F2] text-[#DC2626] border-[#FCA5A5]",
-      desc: "Exclusive root authority to wipe/purge database & manage system policies",
-    },
-    {
-      id: "admin",
-      label: "Hospital Administrator",
-      name: "Dr. Alistair Vance",
-      email: "admin@careops.hospital",
-      role: "admin",
-      badge: "Admin Access",
-      badgeColor: "bg-[#E8F3F1] text-[#176B63] border-[#A7D7D1]",
-      desc: "Full Command Center, SLA Policies & QR Code Generation clearance",
-    },
-    {
-      id: "supervisor",
-      label: "Operations Supervisor",
-      name: "Vikramaditya Rao",
-      email: "supervisor.mnt@careops.hospital",
-      role: "supervisor",
-      badge: "Supervisor",
-      badgeColor: "bg-[#FEF7EC] text-[#B7791F] border-[#FAD7A0]",
-      desc: "AI verification sign-off, SLA breaches & department oversight",
-    },
-    {
-      id: "staff",
-      label: "Maintenance Lead (Staff)",
-      name: "Rajesh Sharma",
-      email: "technician.rajesh@careops.hospital",
-      role: "staff",
-      badge: "Staff Only",
-      badgeColor: "bg-[#EEF4FD] text-[#3868C9] border-[#BFDBFE]",
-      desc: "Assigned tickets, SLA timers, evidence upload & repairs",
-    },
-    {
-      id: "nurse",
-      label: "Senior Staff Nurse (Staff)",
-      name: "Nurse Priya Nair",
-      email: "nurse.priya@careops.hospital",
-      role: "staff",
-      badge: "Staff Only",
-      badgeColor: "bg-[#FDF2F2] text-[#C43D4B] border-[#F8D7DA]",
-      desc: "Clinical ward triage, IV pump alerts & bedside requests",
-    },
-  ];
-
-  const handleSelectPersona = (persona: typeof demoPersonas[0]) => {
-    setEmail(persona.email);
-    setPassword("password123");
-    setActivePersona(persona.id);
+  // Clear inputs on portal change
+  const handleSelectPortal = (portal: "admin" | "staff" | "patient") => {
+    setSelectedPortal(portal);
     setErrorMsg(null);
-  };
-
-  const handleDirectPersonaLogin = async (persona: typeof demoPersonas[0]) => {
-    setEmail(persona.email);
-    setPassword("password123");
-    setActivePersona(persona.id);
-    setErrorMsg(null);
-    setIsLoading(true);
-    setLoadingText(`Signing in as ${persona.name}...`);
-
-    try {
-      const res = await api.login({
-        email: persona.email.trim().toLowerCase(),
-        password: "password123",
-      });
-
-      setStoredToken(res.access_token);
-      const landingTab = res.user.role === "superadmin" ? "superadmin-admins" : res.user.role === "staff" ? "my-department" : "overview";
-      onLoginSuccess(res.user, landingTab);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to sign in. Please verify credentials.");
-    } finally {
-      setIsLoading(false);
-    }
+    setLoginIdentifier("");
+    setPassword("");
+    setPatientMode("login");
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setErrorMsg("Please enter both email address and password");
+    if (!loginIdentifier.trim() || !password) {
+      setErrorMsg("Please enter your login identifier and password.");
       return;
     }
 
     setIsLoading(true);
+    setLoadingText("Verifying credentials...");
     setErrorMsg(null);
 
     try {
       const res = await api.login({
-        email: email.trim().toLowerCase(),
+        login_identifier: loginIdentifier.trim(),
         password: password,
+        portal_hint: selectedPortal,
       });
 
       setStoredToken(res.access_token);
-      const landingTab = res.user.role === "superadmin" ? "superadmin-admins" : res.user.role === "staff" ? "my-department" : "overview";
-      onLoginSuccess(res.user, landingTab);
+
+      if (res.user.role === "patient") {
+        if (onEnterPatientPortal) {
+          onEnterPatientPortal();
+        } else {
+          onLoginSuccess(res.user, "my-requests");
+        }
+      } else if (res.user.role === "staff") {
+        onLoginSuccess(res.user, "my-department");
+      } else {
+        onLoginSuccess(
+          res.user,
+          res.user.role === "superadmin" ? "superadmin-admins" : "overview"
+        );
+      }
     } catch (err: any) {
-      setErrorMsg(err.message || "Invalid credentials. Please verify your email and password.");
+      setErrorMsg(err.message || "Invalid credentials. Please verify your details.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
+  const handleRegisterPatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
-      setErrorMsg("Please provide your Name, Email address, and Password.");
-      return;
-    }
-
-    if (!regEmail.includes("@")) {
-      setErrorMsg("Please enter a valid work or hospital email address.");
-      return;
-    }
-
-    if (regPassword.length < 4) {
-      setErrorMsg("Password must be at least 4 characters long.");
+    if (!regName.trim() || !regPhone.trim() || !regPassword.trim()) {
+      setErrorMsg("Please enter your Name, Phone Number, and Password.");
       return;
     }
 
@@ -203,42 +139,110 @@ export function PortalLoginGateway({
     setErrorMsg(null);
 
     try {
-      const res = await api.register({
+      const res = await api.registerPatient({
         name: regName.trim(),
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword,
-        role: regRole,
-        department_id: regDepartment,
-        designation: regDesignation.trim() || "Operations Personnel",
+        phone: regPhone.trim(),
+        email: regEmail.trim() || undefined,
+        room_number: regRoom.trim() || undefined,
+        bed_number: regBed.trim() || undefined,
+        password: regPassword.trim(),
       });
 
+      setRegSuccessData({
+        patient_id: res.patient_id,
+        token: res.access_token,
+        user: res.user,
+      });
       setStoredToken(res.access_token);
-      const landingTab = res.user.role === "superadmin" ? "superadmin-admins" : res.user.role === "staff" ? "my-department" : "overview";
-      onLoginSuccess(res.user, landingTab);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to create account. Email may already be registered.");
+      setErrorMsg(err.message || "Failed to register patient account.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleForgotPasswordRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotIdentifier.trim()) {
+      setForgotError("Please enter your registered email address or login identifier.");
+      return;
+    }
+
+    setIsSubmittingForgot(true);
+    setForgotError(null);
+    setForgotSuccess(null);
+
+    try {
+      const res = await api.forgotPassword({
+        email_or_identifier: forgotIdentifier.trim(),
+        portal_hint: selectedPortal,
+      });
+
+      setForgotSuccess(res.message);
+      if (res.reset_token) {
+        setForgotToken(res.reset_token);
+      }
+      setForgotStep("reset");
+    } catch (err: any) {
+      setForgotError(err.message || "Failed to initiate password reset.");
+    } finally {
+      setIsSubmittingForgot(false);
+    }
+  };
+
+  const handleResetPasswordWithToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotToken.trim() || forgotNewPassword.length < 6) {
+      setForgotError("Please enter the reset token and a new password with at least 6 characters.");
+      return;
+    }
+
+    setIsSubmittingForgot(true);
+    setForgotError(null);
+    setForgotSuccess(null);
+
+    try {
+      const res = await api.resetPasswordWithToken({
+        token: forgotToken.trim(),
+        new_password: forgotNewPassword.trim(),
+      });
+
+      setForgotSuccess(res.message || "Password updated successfully. You can now log in!");
+      setTimeout(() => {
+        setShowForgotModal(false);
+        setPassword(forgotNewPassword);
+      }, 2000);
+    } catch (err: any) {
+      setForgotError(err.message || "Invalid or expired reset token.");
+    } finally {
+      setIsSubmittingForgot(false);
+    }
+  };
+
+  // Quick Preset Helper
+  const fillPreset = (identifier: string, pass: string = "password123") => {
+    setLoginIdentifier(identifier);
+    setPassword(pass);
+    setErrorMsg(null);
+  };
+
   return (
-    <div className="min-h-screen bg-[#F1F5F9] flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative selection:bg-[#176B63] selection:text-white">
-      {/* Decorative top header bar */}
-      <header className="max-w-6xl w-full mx-auto flex items-center justify-between pb-5 border-b border-[#CBD5E1]">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative selection:bg-[#176B63] selection:text-white">
+      {/* Top Header */}
+      <header className="max-w-6xl w-full mx-auto flex items-center justify-between pb-5 border-b border-slate-200">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-[#176B63] flex items-center justify-center text-white shadow-md shadow-[#176B63]/25">
-            <ShieldCheck className="h-5 w-5" />
+          <div className="h-10 w-10 rounded-2xl bg-[#176B63] flex items-center justify-center text-white shadow-md shadow-[#176B63]/25">
+            <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <div className="font-extrabold text-xl text-[#0F172A] tracking-tight flex items-center gap-2">
-              <span>CareOps <strong className="text-[#176B63]">AI</strong></span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E8F3F1] text-[#176B63] border border-[#A7D7D1]">
+            <div className="font-extrabold text-xl text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Happy <strong className="text-[#176B63]">Care</strong></span>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-[#176B63] border border-emerald-200">
                 Hospital OS
               </span>
             </div>
-            <p className="text-xs text-[#64748B] mt-0.5 font-medium">
-              “Every hospital issue. Accountable ownership. Verified resolution.”
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Secure Central Identity & Operations Gateway
             </p>
           </div>
         </div>
@@ -248,418 +252,630 @@ export function PortalLoginGateway({
             <button
               type="button"
               onClick={() => onEnterPatientPortal()}
-              className="px-3.5 py-1.5 rounded-full bg-[#176B63] hover:bg-[#125852] text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
             >
-              <QrCode className="h-3.5 w-3.5" />
-              <span>Bedside Patient Portal</span>
+              <QrCode className="h-3.5 w-3.5 text-[#176B63]" />
+              <span>Direct Bedside QR</span>
             </button>
           )}
-          <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-[#0F766E] bg-[#E8F3F1] px-3 py-1.5 rounded-full border border-[#99F6E4] shadow-2xs">
-            <span className="h-2 w-2 rounded-full bg-[#0D9488] animate-pulse" />
+          <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+            <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
             <span>NABH / HIPAA Protected</span>
           </div>
         </div>
       </header>
 
-      {/* Main Login Card Section */}
-      <main className="max-w-6xl w-full mx-auto my-auto py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
-        {/* Left Column: Brand & Security Overview */}
-        <div className="lg:col-span-6 space-y-4">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#176B63]/10 text-[#176B63] text-xs font-bold border border-[#176B63]/25">
-            <KeyRound className="h-3.5 w-3.5" />
-            <span>Personnel Authentication System</span>
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight leading-tight">
-              Sign in to <span className="text-[#176B63]">CareOps</span> Operations Portal
-            </h1>
-            <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-              Unified hospital service management, AI visual maintenance verification, patient bedside triage, and strict role-based governance.
-            </p>
-          </div>
-
-          {/* Feature Highlights */}
-          <div className="space-y-2.5 pt-1">
-            {onEnterPatientPortal && (
-              <div
-                onClick={() => onEnterPatientPortal()}
-                className="p-3.5 rounded-xl bg-gradient-to-br from-[#E8F3F1] to-[#D1ECE7] border-2 border-[#176B63]/40 hover:border-[#176B63] transition-all cursor-pointer group shadow-2xs"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[#176B63] font-black text-xs uppercase tracking-wide">
-                    <QrCode className="h-4 w-4" />
-                    <span>Bedside Patient Portal (QR Mode)</span>
-                  </div>
-                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-white text-[#176B63] border border-[#176B63]/20 shadow-2xs">
-                    No Sign-In Required
-                  </span>
-                </div>
-                <p className="text-xs text-[#334155] font-medium mt-1 leading-relaxed">
-                  Looking to lodge a room request or test QR bedside complaint triage? Click here to test the live patient experience.
-                </p>
-                <div className="mt-2 text-xs font-black text-[#176B63] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                  <span>Enter Bedside Patient Portal →</span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-start gap-3 p-3 rounded-xl bg-white/80 border border-[#CBD5E1] shadow-2xs">
-              <div className="p-2 rounded-lg bg-[#E8F3F1] text-[#176B63] shrink-0 mt-0.5">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <div className="space-y-0.5">
-                <strong className="text-[#0F172A] block text-xs font-bold">Strict Role-Based Access Control (RBAC)</strong>
-                <span className="text-[11px] text-[#64748B] leading-normal block">
-                  Only authorized Administrators can create bedside QR codes, configure SLA policies, and manage facility departments.
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-3 rounded-xl bg-white/80 border border-[#CBD5E1] shadow-2xs">
-              <div className="p-2 rounded-lg bg-[#EEF4FD] text-[#3868C9] shrink-0 mt-0.5">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div className="space-y-0.5">
-                <strong className="text-[#0F172A] block text-xs font-bold">AI Multimodal Verification</strong>
-                <span className="text-[11px] text-[#64748B] leading-normal block">
-                  Computer vision motion heuristics verify repair evidence before supervisor sign-off.
-                </span>
-              </div>
-            </div>
-          </div>
+      {/* Main Container */}
+      <main className="max-w-6xl w-full mx-auto my-auto py-6 space-y-6">
+        {/* Title */}
+        <div className="text-center max-w-xl mx-auto space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            Hospital Management System
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500">
+            Select your authorized portal to authenticate against the hospital central identity system.
+          </p>
         </div>
 
-        {/* Right Column: Clean, Generously Sized Login Form */}
-        <div className="lg:col-span-6">
-          <div className="bg-white rounded-2xl border border-[#CBD5E1] p-5 sm:p-6 shadow-xl shadow-[#0F172A]/5 space-y-4">
-            {/* Mode Switcher Tabs */}
-            <div className="flex items-center p-1 bg-[#F1F5F9] rounded-2xl border border-[#CBD5E1]">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("signin");
-                  setErrorMsg(null);
-                }}
-                className={`flex-1 py-2.5 rounded-xl font-extrabold text-sm transition-all cursor-pointer ${
-                  authMode === "signin"
-                    ? "bg-white text-[#0F172A] shadow-sm border border-[#CBD5E1]"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-              >
-                Staff Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("register");
-                  setErrorMsg(null);
-                  if (email && email !== "admin@careops.hospital") setRegEmail(email);
-                  if (password && password !== "password123") setRegPassword(password);
-                }}
-                className={`flex-1 py-2.5 rounded-xl font-extrabold text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authMode === "register"
-                    ? "bg-white text-[#176B63] shadow-sm border border-[#CBD5E1]"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-              >
-                <UserPlus className="h-4 w-4" />
-                <span>Create Account</span>
-              </button>
-            </div>
-
-            {authMode === "signin" && (
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={() => handleDirectPersonaLogin(demoPersonas[1])}
-                className="w-full p-3 rounded-xl bg-gradient-to-r from-[#176B63] to-[#0D9488] hover:from-[#125852] hover:to-[#0B7A70] text-white font-extrabold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-between cursor-pointer group disabled:opacity-50"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-white/20 text-white">
-                    <Sparkles className="h-4 w-4" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-[10px] uppercase tracking-wider text-[#99F6E4] font-black">🚀 1-Click Instant Access</div>
-                    <div className="text-xs sm:text-sm font-bold">Sign In as Admin (Dr. Alistair Vance)</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 text-xs font-bold text-[#99F6E4] group-hover:translate-x-1 transition-transform">
-                  <span>Enter Dashboard →</span>
-                </div>
-              </button>
-            )}
-
-            <div className="space-y-1">
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] tracking-tight">
-                {authMode === "signin" ? "Staff & Administrator Sign In" : "Create Hospital Account"}
-              </h2>
-              <p className="text-sm text-[#64748B]">
-                {authMode === "signin"
-                  ? "Enter your hospital email and password to access your assigned queue."
-                  : "Register your personnel credentials to access your CareOps workspace immediately."}
-              </p>
-            </div>
-
-            {errorMsg && (
+        {/* The Exactly Three Main Portals Selector Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* 1. Admin Portal */}
+          <button
+            type="button"
+            onClick={() => handleSelectPortal("admin")}
+            className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
+              selectedPortal === "admin"
+                ? "bg-white border-[#176B63] shadow-lg shadow-[#176B63]/10"
+                : "bg-white/70 hover:bg-white border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
               <div
-                className={`p-4.5 rounded-2xl border-2 text-sm flex items-start gap-3 font-bold animate-in fade-in duration-200 ${
-                  errorMsg.toLowerCase().includes("locked")
-                    ? "bg-[#FEF2F2] border-[#FCA5A5] text-[#991B1B]"
-                    : "bg-[#FEF2F2] border-[#FECACA] text-[#B91C1C]"
+                className={`p-2.5 rounded-xl ${
+                  selectedPortal === "admin"
+                    ? "bg-[#176B63] text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
                 }`}
               >
-                {errorMsg.toLowerCase().includes("locked") ? (
-                  <Lock className="h-5 w-5 shrink-0 text-[#DC2626] mt-0.5" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 shrink-0 text-[#B91C1C] mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <div className="font-black text-sm">
-                    {errorMsg.toLowerCase().includes("locked")
-                      ? "Security Lockout Triggered (3 Consecutive Failures)"
-                      : "Authentication Notice"}
-                  </div>
-                  <div className="mt-0.5 text-xs font-semibold leading-relaxed">{errorMsg}</div>
-                  {authMode === "signin" && errorMsg.includes("Invalid email or password") && (
-                    <div className="mt-2 pt-2 border-t border-[#FCA5A5]/60 text-xs">
-                      Don't have an account registered yet?{" "}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAuthMode("register");
-                          setRegEmail(email);
-                          setRegPassword(password);
-                          setErrorMsg(null);
-                        }}
-                        className="underline font-black text-[#991B1B] hover:text-[#7F1D1D] cursor-pointer"
-                      >
-                        Click here to create account with this email →
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                  selectedPortal === "admin"
+                    ? "bg-emerald-50 text-[#176B63] border border-emerald-200"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                Portal A
+              </span>
+            </div>
+            <h2 className="font-extrabold text-base text-slate-900">Admin Portal</h2>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Executive authority, staff credential management, department assignments, and SMTP logs.
+            </p>
+            {selectedPortal === "admin" && (
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
+                <span>Active Portal</span>
+                <ArrowRight className="h-3 w-3" />
               </div>
             )}
+          </button>
 
-            {authMode === "signin" ? (
-              /* Sign In Form */
-              <form onSubmit={handleLoginSubmit} className="space-y-3.5">
-                {/* Email Input */}
-                <div className="space-y-1">
-                  <label className="font-bold text-xs text-[#1E293B] block">Hospital Email Address</label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="e.g. admin@careops.hospital"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        setErrorMsg(null);
-                      }}
-                      className="w-full pl-10 pr-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
-                    />
-                  </div>
-                </div>
+          {/* 2. Staff Portal */}
+          <button
+            type="button"
+            onClick={() => handleSelectPortal("staff")}
+            className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
+              selectedPortal === "staff"
+                ? "bg-white border-[#176B63] shadow-lg shadow-[#176B63]/10"
+                : "bg-white/70 hover:bg-white border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div
+                className={`p-2.5 rounded-xl ${
+                  selectedPortal === "staff"
+                    ? "bg-[#176B63] text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                }`}
+              >
+                <Building2 className="h-5 w-5" />
+              </div>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                  selectedPortal === "staff"
+                    ? "bg-emerald-50 text-[#176B63] border border-emerald-200"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                Portal B
+              </span>
+            </div>
+            <h2 className="font-extrabold text-base text-slate-900">Staff Portal</h2>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Maintenance, Doctors, Nursing, Housekeeping, Billing & Pharmacy operational queues.
+            </p>
+            {selectedPortal === "staff" && (
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
+                <span>Active Portal</span>
+                <ArrowRight className="h-3 w-3" />
+              </div>
+            )}
+          </button>
 
-                {/* Password Input */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-xs text-[#1E293B]">Password</label>
-                    <span className="text-[11px] text-[#64748B]">Default: <code className="text-[#176B63] font-mono font-bold">password123</code></span>
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      required
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        setErrorMsg(null);
-                      }}
-                      className="w-full pl-10 pr-10 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1 rounded transition-colors cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
+          {/* 3. Patient Portal */}
+          <button
+            type="button"
+            onClick={() => handleSelectPortal("patient")}
+            className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
+              selectedPortal === "patient"
+                ? "bg-white border-[#176B63] shadow-lg shadow-[#176B63]/10"
+                : "bg-white/70 hover:bg-white border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div
+                className={`p-2.5 rounded-xl ${
+                  selectedPortal === "patient"
+                    ? "bg-[#176B63] text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                }`}
+              >
+                <User className="h-5 w-5" />
+              </div>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                  selectedPortal === "patient"
+                    ? "bg-emerald-50 text-[#176B63] border border-emerald-200"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                Portal C
+              </span>
+            </div>
+            <h2 className="font-extrabold text-base text-slate-900">Patient Portal</h2>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Mobile-friendly patient requests, bedside complaint filing, live progress tracking, and feedback.
+            </p>
+            {selectedPortal === "patient" && (
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
+                <span>Active Portal</span>
+                <ArrowRight className="h-3 w-3" />
+              </div>
+            )}
+          </button>
+        </div>
 
-                {/* Submit Button */}
+        {/* Portal Login Card */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-900/5 p-6 sm:p-8 max-w-xl mx-auto space-y-5">
+          {/* Card Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#176B63]">
+                {selectedPortal === "admin"
+                  ? "Executive Authentication"
+                  : selectedPortal === "staff"
+                  ? "Hospital Employee Sign In"
+                  : "Patient Access Gateway"}
+              </span>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                {selectedPortal === "admin"
+                  ? "Admin Sign In"
+                  : selectedPortal === "staff"
+                  ? "Staff Sign In"
+                  : patientMode === "login"
+                  ? "Patient Sign In"
+                  : "Register Patient Account"}
+              </h3>
+            </div>
+
+            {selectedPortal === "patient" && (
+              <div className="flex items-center p-1 bg-slate-100 rounded-xl text-xs">
                 <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 rounded-xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2 disabled:opacity-75 cursor-pointer"
+                  type="button"
+                  onClick={() => setPatientMode("login")}
+                  className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                    patientMode === "login"
+                      ? "bg-white text-slate-900 shadow-2xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
                 >
-                  {isLoading && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
-                  <span>{isLoading ? loadingText : "Sign In to Workspace"}</span>
-                  {!isLoading && <ArrowRight className="h-4 w-4 shrink-0" />}
+                  Login
                 </button>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => setPatientMode("register")}
+                  className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                    patientMode === "register"
+                      ? "bg-white text-[#176B63] shadow-2xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Error Notice */}
+          {errorMsg && (
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{errorMsg}</div>
+            </div>
+          )}
+
+          {/* Form Handling */}
+          {selectedPortal === "patient" && patientMode === "register" ? (
+            /* Patient Registration Form */
+            regSuccessData ? (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  <h4 className="font-bold text-sm">Account Created Successfully</h4>
+                </div>
+                <p className="text-xs text-emerald-800">
+                  Your patient account is now registered in the hospital database. Your unique identifier is:
+                </p>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200 font-mono text-center">
+                  <div className="text-[11px] text-slate-500 uppercase">Assigned Patient ID</div>
+                  <strong className="text-xl text-[#176B63] tracking-wide">{regSuccessData.patient_id}</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onEnterPatientPortal) {
+                      onEnterPatientPortal();
+                    } else {
+                      onLoginSuccess(regSuccessData.user, "my-requests");
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-[#176B63] text-white font-bold text-xs cursor-pointer shadow-sm"
+                >
+                  Enter Patient Portal Now →
+                </button>
+              </div>
             ) : (
-              /* Register Form */
-              <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
-                <div className="space-y-1">
-                  <label className="font-bold text-xs text-[#1E293B] block">Full Name</label>
+              <form onSubmit={handleRegisterPatientSubmit} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Full Name *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Ashif Basha"
                     value={regName}
                     onChange={(e) => setRegName(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                    placeholder="e.g. Eleanor Vance"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-xs text-[#1E293B] block">Hospital Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. bashajafer36@gmail.com"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Phone Number *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      placeholder="+1-555-0192"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Email (Optional)</label>
+                    <input
+                      type="email"
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                      placeholder="patient@gmail.com"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-xs text-[#1E293B] block">Create Password</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Room Number (Optional)</label>
+                    <input
+                      type="text"
+                      value={regRoom}
+                      onChange={(e) => setRegRoom(e.target.value)}
+                      placeholder="e.g. 204"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Bed (Optional)</label>
+                    <input
+                      type="text"
+                      value={regBed}
+                      onChange={(e) => setRegBed(e.target.value)}
+                      placeholder="e.g. A"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Password *</label>
                   <div className="relative">
                     <input
                       type={showRegPassword ? "text" : "password"}
                       required
-                      placeholder="••••••••"
                       value={regPassword}
                       onChange={(e) => setRegPassword(e.target.value)}
-                      className="w-full px-3.5 pr-10 py-2 rounded-xl border border-[#CBD5E1] text-xs bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B63] focus:ring-2 focus:ring-[#176B63]/15 transition-all font-medium text-[#0F172A]"
+                      placeholder="Create a secure password"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569] p-1 rounded transition-colors cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       {showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="font-bold text-[11px] text-[#334155] block mb-1">Access Role</label>
-                    <select
-                      value={regRole}
-                      onChange={(e) => setRegRole(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
-                    >
-                      <option value="admin">Administrator (Full Access)</option>
-                      <option value="supervisor">Operations Supervisor</option>
-                      <option value="staff">Maintenance / Staff Lead</option>
-                      <option value="doctor">Duty Doctor / Physician</option>
-                      <option value="nurse">Clinical Nursing Staff</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-[11px] text-[#334155] block mb-1">Department</label>
-                    <select
-                      value={regDepartment}
-                      onChange={(e) => setRegDepartment(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] cursor-pointer"
-                    >
-                      <option value="maintenance">Facilities & Maintenance</option>
-                      <option value="nursing">Nursing & Clinical Inpatient</option>
-                      <option value="housekeeping">Housekeeping & Sanitation</option>
-                      <option value="billing">Patient Billing & Accounts</option>
-                      <option value="pharmacy">Clinical Pharmacy</option>
-                    </select>
-                  </div>
-                </div>
-
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-2.5 rounded-xl bg-[#176B63] hover:bg-[#125852] active:bg-[#0e4641] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#176B63]/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-bold text-xs transition-all cursor-pointer shadow-md shadow-[#176B63]/20"
                 >
-                  <UserPlus className="h-4 w-4" />
-                  <span>{isLoading ? "Creating Account..." : "Create Account & Sign In"}</span>
+                  {isLoading ? "Creating Account..." : "Register Patient Account"}
                 </button>
               </form>
-            )}
-
-            {/* Quick Demo Pre-Fill Selector */}
-            <div className="pt-4 border-t border-[#E2E8F0] space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-extrabold text-[#475569] uppercase tracking-wider">
-                  1-Click Role Logins (Tap to Sign In):
-                </span>
-                <span className="text-[11px] font-bold text-[#176B63] bg-[#E8F3F1] px-2 py-0.5 rounded-full border border-[#A7D7D1]">
-                  Instant Access
-                </span>
+            )
+          ) : (
+            /* Standard Sign-In Form (Admin, Staff, or Patient Login) */
+            <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {selectedPortal === "admin"
+                    ? "Admin Email or Username *"
+                    : selectedPortal === "staff"
+                    ? "Staff ID (e.g. EMP-MNT-101) or Hospital Email *"
+                    : "Patient ID (e.g. PAT-10001) or Registered Phone / Email *"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  placeholder={
+                    selectedPortal === "admin"
+                      ? "admin@careops.hospital"
+                      : selectedPortal === "staff"
+                      ? "EMP-MNT-101 or technician.rajesh@careops.hospital"
+                      : "PAT-10001 or +1-555-0192"
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono text-slate-900"
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {demoPersonas.map((p) => {
-                  const isSelected = email.toLowerCase() === p.email.toLowerCase() && authMode === "signin";
-                  return (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700">Password *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotIdentifier(loginIdentifier);
+                      setForgotStep("request");
+                      setForgotError(null);
+                      setForgotSuccess(null);
+                      setShowForgotModal(true);
+                    }}
+                    className="text-[11px] font-semibold text-[#176B63] hover:underline cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#176B63]/20"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>{loadingText}</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4" />
+                    <span>
+                      {selectedPortal === "admin"
+                        ? "Sign In to Admin Portal"
+                        : selectedPortal === "staff"
+                        ? "Sign In to Staff Workspace"
+                        : "Sign In to Patient Portal"}
+                    </span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* Quick-Test Personas (Ensures immediate evaluation without typing errors) */}
+          <div className="pt-3 border-t border-slate-100 space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+              1-Click Verification Credentials
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {selectedPortal === "admin" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fillPreset("admin@careops.hospital", "password123")}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Dr. Alistair Vance (Admin)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fillPreset("superadmin@careops.hospital", "password123")}
+                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Superadmin (Root)
+                  </button>
+                </>
+              )}
+
+              {selectedPortal === "staff" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fillPreset("EMP-MNT-101", "password123")}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Rajesh Sharma (EMP-MNT-101)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fillPreset("EMP-NRS-202", "password123")}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Nurse Priya (EMP-NRS-202)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fillPreset("supervisor.mnt@careops.hospital", "password123")}
+                    className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Vikramaditya (Supervisor)
+                  </button>
+                </>
+              )}
+
+              {selectedPortal === "patient" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fillPreset("PAT-10001", "password123")}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Eleanor Vance (PAT-10001)
+                  </button>
+                  {onEnterPatientPortal && (
                     <button
-                      key={p.id}
                       type="button"
-                      disabled={isLoading}
-                      onClick={() => {
-                        setAuthMode("signin");
-                        handleDirectPersonaLogin(p);
-                      }}
-                      className={`text-left p-2.5 rounded-xl border transition-all flex flex-col justify-between gap-1 cursor-pointer disabled:opacity-50 ${
-                        isSelected
-                          ? "border-[#176B63] bg-[#E8F3F1] ring-2 ring-[#176B63]/30"
-                          : "border-[#E2E8F0] hover:border-[#176B63] hover:bg-[#F0FDF4] hover:shadow-2xs"
-                      }`}
+                      onClick={() => onEnterPatientPortal()}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center justify-between w-full">
-                        <strong className="text-[#0F172A] font-bold text-xs truncate">
-                          {p.name}
-                        </strong>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${p.badgeColor}`}>
-                          {p.badge}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between w-full text-[11px]">
-                        <span className="text-[#64748B] font-mono truncate">
-                          {p.email}
-                        </span>
-                        <span className="text-[10px] font-bold text-[#176B63] shrink-0">
-                          Sign In →
-                        </span>
-                      </div>
+                      Guest Bedside QR Mode
                     </button>
-                  );
-                })}
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] text-[#475569] flex items-center gap-2">
-                <ShieldAlert className="h-3.5 w-3.5 text-[#0D9488] shrink-0" />
-                <span>
-                  <strong>Admin Clearance Notice:</strong> Only <code>Dr. Alistair Vance (Admin)</code> or accounts created with <code>Administrator</code> role can register rooms and generate bedside QR codes.
-                </span>
-              </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
       </main>
 
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#176B63]/10 text-[#176B63]">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Secure Password Recovery</h3>
+                  <p className="text-xs text-slate-500">Authoritative reset token dispatch</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowForgotModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              {forgotError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                  <span>{forgotError}</span>
+                </div>
+              )}
+
+              {forgotSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{forgotSuccess}</span>
+                </div>
+              )}
+
+              {forgotStep === "request" ? (
+                <form onSubmit={handleForgotPasswordRequest} className="space-y-3.5">
+                  <p className="text-slate-600">
+                    Enter your registered email address or login identifier. We will generate an authoritative reset token and dispatch instructions via the hospital email system.
+                  </p>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Email or Login Identifier *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={forgotIdentifier}
+                      onChange={(e) => setForgotIdentifier(e.target.value)}
+                      placeholder="e.g. admin@careops.hospital or EMP-MNT-101"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingForgot}
+                      className="px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-semibold cursor-pointer shadow-2xs"
+                    >
+                      {isSubmittingForgot ? "Sending Instructions..." : "Send Reset Link"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleResetPasswordWithToken} className="space-y-3.5">
+                  <p className="text-slate-600">
+                    Enter the reset token received via email (or generated by the server) and set your new password.
+                  </p>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Reset Token *</label>
+                    <input
+                      type="text"
+                      required
+                      value={forgotToken}
+                      onChange={(e) => setForgotToken(e.target.value)}
+                      placeholder="Paste reset token here"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">New Password * (Min 6 chars)</label>
+                    <input
+                      type="password"
+                      required
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingForgot}
+                      className="px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-semibold cursor-pointer shadow-2xs"
+                    >
+                      {isSubmittingForgot ? "Updating..." : "Update Password"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
-      <footer className="max-w-6xl w-full mx-auto pt-8 border-t border-[#CBD5E1] flex flex-col sm:flex-row items-center justify-between text-sm text-[#64748B] gap-3">
-        <span>CareOps AI • Enterprise Hospital Facility & Service Governance Platform</span>
-        <span className="text-xs text-[#94A3B8]">Immutable Audit Trail Enabled • All Sign-ins Logged</span>
+      <footer className="max-w-6xl w-full mx-auto text-center pt-4 border-t border-slate-200 text-xs text-slate-400">
+        Hospital Patient, Staff & Admin Management System • Built with Next.js & FastAPI • HIPAA / NABH Compliant
       </footer>
     </div>
   );

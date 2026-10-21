@@ -27,6 +27,9 @@ class UserBase(BaseUTCModel):
     locked_reason: Optional[str] = None
     last_login_at: Optional[datetime] = None
 
+    token_version: int = 1
+    patient_id: Optional[str] = None
+
 class UserCreate(UserBase):
     password: str
 
@@ -39,16 +42,29 @@ class UserResponse(UserBase):
         from_attributes = True
 
 class LoginRequest(BaseModel):
-    email: str
+    email: Optional[str] = None
+    login_identifier: Optional[str] = None
     password: str
+    portal_hint: Optional[str] = None  # "admin", "staff", "patient"
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str
+
+class ResetPasswordWithTokenRequest(BaseModel):
+    token: str
+    new_password: str
 
 class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
-    role: Optional[str] = "admin"
+    role: Optional[str] = "staff"
     department_id: Optional[str] = "maintenance"
-    designation: Optional[str] = "Hospital Lead"
+    designation: Optional[str] = "Hospital Personnel"
     phone: Optional[str] = None
 
 class TokenResponse(BaseModel):
@@ -66,12 +82,15 @@ class StaffCreate(BaseModel):
     designation: str
     role: str = "staff"
     supervisor_id: Optional[int] = None
+    password: Optional[str] = None
     initial_password: Optional[str] = "TempPass2026!"
     require_password_change: bool = True
     permissions: Optional[List[str]] = None
 
 class StaffUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[str] = None
+    employee_id: Optional[str] = None
     phone: Optional[str] = None
     department_id: Optional[str] = None
     designation: Optional[str] = None
@@ -160,6 +179,21 @@ class DepartmentBase(BaseModel):
 
 class DepartmentCreate(DepartmentBase):
     pass
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    supervisor_id: Optional[int] = None
+
+class DepartmentStatusToggle(BaseModel):
+    is_active: bool
+
+class DepartmentReassignRequest(BaseModel):
+    target_department_id: str
+    reassign_staff: bool = True
+    reassign_tickets: bool = True
 
 class DepartmentResponse(DepartmentBase):
     created_at: datetime
@@ -266,12 +300,24 @@ class PatientTicketCreate(BaseModel):
     department_id: str
     category: str
     description: str
-    patient_contact: str  # Mandatory mobile number for WhatsApp tracking
+    patient_contact: Optional[str] = ""  # Mobile number (optional if patient_email provided)
+    patient_email: Optional[str] = None
     title: Optional[str] = None
     idempotency_key: Optional[str] = None
     voice_recording_base64: Optional[str] = None
     voice_transcription: Optional[str] = None
     photo_base64: Optional[str] = None
+
+class PatientRegisterRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    password: str
+
+class PatientProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
 
 class StaffTicketCreate(BaseModel):
     title: str

@@ -72,16 +72,77 @@ export function StaffDetailDrawer({
   // Permission Matrix Modal State
   const [showPermissionModal, setShowPermissionModal] = useState(false);
 
+  // Profile Editing State (Overview Tab)
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editDepartmentId, setEditDepartmentId] = useState("");
+  const [editDesignation, setEditDesignation] = useState("");
+  const [departmentsList, setDepartmentsList] = useState<any[]>([]);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [profileErrorMsg, setProfileErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getDepartments().then((depts: any) => {
+      if (Array.isArray(depts)) setDepartmentsList(depts);
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     setInternalStaff(null);
     setIsEditingRole(false);
+    setIsEditingProfile(false);
     setRoleUpdateMessage(null);
     setRoleUpdateError(null);
+    setProfileSuccessMsg(null);
+    setProfileErrorMsg(null);
     if (propStaff) {
       setSelectedRole(propStaff.role);
       setSelectedDesignation(propStaff.designation || "");
+      setEditName(propStaff.name || "");
+      setEditEmail(propStaff.email || "");
+      setEditPhone(propStaff.phone || "");
+      setEditDepartmentId(propStaff.department_id || "");
+      setEditDesignation(propStaff.designation || "");
     }
   }, [propStaff]);
+
+  const handleSaveProfile = async () => {
+    if (!staff) return;
+    setIsSavingProfile(true);
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
+    try {
+      const emailChanged = editEmail.trim().toLowerCase() !== staff.email.toLowerCase();
+      const res: any = await api.updateStaff(staff.id, {
+        name: editName.trim() || staff.name,
+        email: editEmail.trim().toLowerCase() || staff.email,
+        phone: editPhone.trim(),
+        department_id: editDepartmentId || staff.department_id,
+        designation: editDesignation.trim() || staff.designation,
+      });
+      if (res && res.id) {
+        setInternalStaff(res);
+        setProfileSuccessMsg(
+          emailChanged
+            ? "Staff details & official work email updated! Security notices have been dispatched."
+            : "Staff details updated successfully!"
+        );
+        setIsEditingProfile(false);
+        onRefresh();
+        setTimeout(() => setProfileSuccessMsg(null), 5000);
+      } else {
+        throw new Error(res?.detail || "Failed to update profile");
+      }
+    } catch (err: any) {
+      console.error("Failed to update staff details:", err);
+      setProfileErrorMsg(err?.message || "Failed to update staff details.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const AVAILABLE_ROLES = [
     {
@@ -212,11 +273,17 @@ export function StaffDetailDrawer({
         <div className="p-6 border-b-2 border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <img
-                src={staff.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
-                alt={staff.name}
-                className="h-14 w-14 rounded-2xl object-cover border-2 border-[#94A3B8] shadow-sm"
-              />
+              <div className="h-14 w-14 rounded-2xl bg-[#E8F3F1] text-[#176B63] border-2 border-[#99F6E4] flex items-center justify-center font-black text-lg shadow-sm">
+                {staff.name
+                  ? staff.name
+                      .split(" ")
+                      .filter(Boolean)
+                      .map((n: string) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()
+                  : "ST"}
+              </div>
               <span
                 className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white ${
                   staff.account_status === "active"
@@ -303,104 +370,255 @@ export function StaffDetailDrawer({
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <div className="space-y-6">
+              {profileSuccessMsg && (
+                <div className="p-3.5 bg-[#EDF7F2] border-2 border-[#A6E1CE] rounded-2xl flex items-center gap-2.5 text-xs font-bold text-[#16805D] animate-in fade-in">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-[#16805D]" />
+                  <span>{profileSuccessMsg}</span>
+                </div>
+              )}
+
+              {profileErrorMsg && (
+                <div className="p-3.5 bg-[#FEF2F2] border-2 border-[#FECACA] rounded-2xl flex items-center gap-2.5 text-xs font-bold text-[#DC2626] animate-in fade-in">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-[#DC2626]" />
+                  <span>{profileErrorMsg}</span>
+                </div>
+              )}
+
               {/* Identity & Contact Card */}
               <div className="bg-[#F8FAFC] rounded-2xl border-2 border-[#CBD5E1] p-5 space-y-4">
-                <h3 className="text-base font-black text-[#0F172A] flex items-center gap-2">
-                  <User className="h-5 w-5 text-[#176B63]" />
-                  <span>Personal & Employment Identity</span>
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Full Name
-                    </label>
-                    <div className="font-extrabold text-[#0F172A]">{staff.name}</div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Hospital Employee ID
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-[#176B63] bg-white px-2.5 py-1 rounded-lg border border-[#CBD5E1]">
-                        {staff.employee_id}
-                      </span>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-black text-[#0F172A] flex items-center gap-2">
+                    <User className="h-5 w-5 text-[#176B63]" />
+                    <span>Personal & Employment Identity</span>
+                  </h3>
+                  {(currentUserRole === "admin" || currentUserRole === "superadmin") && (
+                    !isEditingProfile ? (
                       <button
-                        onClick={() => handleCopy(staff.employee_id, "emp_id")}
-                        className="p-1 text-[#64748B] hover:text-[#0F172A] cursor-pointer"
-                        title="Copy ID"
+                        type="button"
+                        onClick={() => {
+                          setEditName(staff.name || "");
+                          setEditEmail(staff.email || "");
+                          setEditPhone(staff.phone || "");
+                          setEditDepartmentId(staff.department_id || "");
+                          setEditDesignation(staff.designation || "");
+                          setIsEditingProfile(true);
+                          setProfileErrorMsg(null);
+                        }}
+                        className="px-3 py-1 rounded-lg bg-white hover:bg-[#F1F5F9] text-[#176B63] border-2 border-[#176B63] text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+                        title="Edit Staff Personal & Department Info"
                       >
-                        {copiedText === "emp_id" ? (
-                          <Check className="h-4 w-4 text-[#16805D]" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
+                        <Edit3 className="h-3.5 w-3.5" />
+                        <span>Edit Details</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProfile(false)}
+                        className="px-3 py-1 rounded-lg bg-white hover:bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] text-xs font-bold cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    )
+                  )}
+                </div>
+
+                {!isEditingProfile ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Full Name
+                      </label>
+                      <div className="font-extrabold text-[#0F172A]">{staff.name}</div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Hospital Employee ID
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-[#176B63] bg-white px-2.5 py-1 rounded-lg border border-[#CBD5E1]">
+                          {staff.employee_id}
+                        </span>
+                        <button
+                          onClick={() => handleCopy(staff.employee_id, "emp_id")}
+                          className="p-1 text-[#64748B] hover:text-[#0F172A] cursor-pointer"
+                          title="Copy ID"
+                        >
+                          {copiedText === "emp_id" ? (
+                            <Check className="h-4 w-4 text-[#16805D]" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Official Work Email
+                      </label>
+                      <div className="flex items-center gap-2 font-bold text-[#0F172A]">
+                        <Mail className="h-4 w-4 text-[#64748B]" />
+                        <span>{staff.email}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Contact Phone
+                      </label>
+                      <div className="flex items-center gap-2 font-bold text-[#0F172A]">
+                        <Phone className="h-4 w-4 text-[#64748B]" />
+                        <span>{staff.phone || "Not recorded"}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Assigned Department
+                      </label>
+                      <div className="flex items-center gap-2 font-extrabold text-[#0F172A]">
+                        <Building className="h-4 w-4 text-[#176B63]" />
+                        <span>{staff.department_name || staff.department_id || "Hospital Global"}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Hospital Designation
+                      </label>
+                      <div className="font-extrabold text-[#0F172A]">{staff.designation}</div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Account Provisioned
+                      </label>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569]">
+                        <Calendar className="h-4 w-4 text-[#94A3B8]" />
+                        <span>{formatDateTime(staff.created_at)}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
+                        Last Successful Authentication
+                      </label>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569]">
+                        <Clock className="h-4 w-4 text-[#94A3B8]" />
+                        <span>
+                          {staff.last_login_at
+                            ? formatDateTime(staff.last_login_at)
+                            : "Never authenticated"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 bg-white p-4 rounded-xl border border-[#CBD5E1] animate-in fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <label className="text-xs font-black text-[#0F172A] uppercase block mb-1">
+                          Full Name <span className="text-[#DC2626]">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+                          placeholder="Staff full name"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-black text-[#0F172A] uppercase block mb-1">
+                          Contact Phone
+                        </label>
+                        <input
+                          type="text"
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+                          placeholder="+91 98765 43210"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="text-xs font-black text-[#0F172A] uppercase block mb-1">
+                          Official Work Email <span className="text-[#DC2626]">*</span>
+                        </label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#64748B]" />
+                          <input
+                            type="email"
+                            required
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+                            placeholder="staff.name@careops.hospital"
+                          />
+                        </div>
+                        <div className="mt-2 p-2.5 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] text-[11px] text-[#166534] leading-relaxed">
+                          <span className="font-bold">Email Assignment Modes: </span>
+                          <strong>Mode 1 (Active):</strong> Modifying this address centrally updates the database account store and routes all dispatch, assignment, and password-reset emails here.
+                          <br />
+                          <strong>Mode 2 (Org Mailbox):</strong> If this mailbox does not exist yet with your domain provider (e.g. Google Workspace / Microsoft 365), provision it via your provider administration console.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-black text-[#0F172A] uppercase block mb-1">
+                          Assigned Department <span className="text-[#DC2626]">*</span>
+                        </label>
+                        <select
+                          value={editDepartmentId}
+                          onChange={(e) => setEditDepartmentId(e.target.value)}
+                          className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] bg-white text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+                        >
+                          <option value="">Select Department...</option>
+                          {departmentsList.map((d: any) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name} ({d.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-black text-[#0F172A] uppercase block mb-1">
+                          Hospital Designation
+                        </label>
+                        <input
+                          type="text"
+                          value={editDesignation}
+                          onChange={(e) => setEditDesignation(e.target.value)}
+                          className="w-full p-2.5 rounded-xl border-2 border-[#CBD5E1] text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#176B63]"
+                          placeholder="e.g. Senior Specialist, Charge Nurse"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[#F1F5F9]">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProfile(false)}
+                        disabled={isSavingProfile}
+                        className="px-4 py-2 rounded-xl border border-[#CBD5E1] text-xs font-bold text-[#475569] hover:bg-[#F8FAFC] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveProfile}
+                        disabled={isSavingProfile}
+                        className="px-5 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        <span>{isSavingProfile ? "Saving..." : "Save Details"}</span>
                       </button>
                     </div>
                   </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Official Work Email
-                    </label>
-                    <div className="flex items-center gap-2 font-bold text-[#0F172A]">
-                      <Mail className="h-4 w-4 text-[#64748B]" />
-                      <span>{staff.email}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Contact Phone
-                    </label>
-                    <div className="flex items-center gap-2 font-bold text-[#0F172A]">
-                      <Phone className="h-4 w-4 text-[#64748B]" />
-                      <span>{staff.phone || "Not recorded"}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Assigned Department
-                    </label>
-                    <div className="flex items-center gap-2 font-extrabold text-[#0F172A]">
-                      <Building className="h-4 w-4 text-[#176B63]" />
-                      <span>{staff.department_name || staff.department_id || "Hospital Global"}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Hospital Designation
-                    </label>
-                    <div className="font-extrabold text-[#0F172A]">{staff.designation}</div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Account Provisioned
-                    </label>
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569]">
-                      <Calendar className="h-4 w-4 text-[#94A3B8]" />
-                      <span>{formatDateTime(staff.created_at)}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-[#475569] uppercase block mb-1">
-                      Last Successful Authentication
-                    </label>
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569]">
-                      <Clock className="h-4 w-4 text-[#94A3B8]" />
-                      <span>
-                        {staff.last_login_at
-                          ? formatDateTime(staff.last_login_at)
-                          : "Never authenticated"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Status Banner */}

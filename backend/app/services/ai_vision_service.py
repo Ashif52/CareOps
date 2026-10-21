@@ -151,7 +151,7 @@ class AIVisionService:
             if not after_is_video:
                 after_repair_functional_evidence = "static_unverified"
                 inconsistencies.append(
-                    "Dynamic mechanical appliance (Fan / Motor / Flow): A still photograph cannot demonstrate operational rotation or dynamic fluid movement."
+                    "Dynamic mechanical appliance (Fan / Motor / Flow): A still photograph cannot demonstrate rotation or dynamic fluid movement."
                 )
                 ai_recommendation = "inconclusive"
                 review_requirement = "mandatory_human_review"

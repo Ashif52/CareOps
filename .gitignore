@@ -36,6 +36,13 @@ backend/careops.db
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Scratch & temporary verification scripts
+scratch_*.py
+verify_*.py
+scratch/
+test_*.db
+
+
 # Next.js build output
 .next/
 out/

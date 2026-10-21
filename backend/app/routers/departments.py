@@ -1,11 +1,15 @@
+import json
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, desc
 from app.database import get_db
-from app.models import Department, User, Ticket, SLAPolicy
-from app.schemas import DepartmentResponse, DepartmentCreate
+from app.models import Department, User, Ticket, SLAPolicy, AuditLog
+from app.schemas import (
+    DepartmentResponse, DepartmentCreate, DepartmentUpdate,
+    DepartmentStatusToggle, DepartmentReassignRequest
+)
 from app.services.auth_service import get_current_user, require_roles
 
 router = APIRouter(prefix="/departments", tags=["Departments & Staff"])
@@ -14,8 +18,14 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 @router.get("", response_model=List[DepartmentResponse])
-def get_departments(db: Session = Depends(get_db)):
-    departments = db.query(Department).filter(Department.is_active == True).all()
+def get_departments(
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Department)
+    if not include_inactive:
+        query = query.filter(Department.is_active == True)
+    departments = query.order_by(Department.name.asc()).all()
     results = []
     for d in departments:
         active_tkt_count = db.query(Ticket).filter(
@@ -30,9 +40,9 @@ def get_departments(db: Session = Depends(get_db)):
         results.append({
             "id": d.id,
             "name": d.name,
-            "code": d.code,
+            "code": d.code.upper(),
             "description": d.description,
-            "icon": d.icon,
+            "icon": d.icon or "Building2",
             "supervisor_id": d.supervisor_id,
             "is_active": d.is_active,
             "created_at": d.created_at,
@@ -44,26 +54,385 @@ def get_departments(db: Session = Depends(get_db)):
 @router.post("", response_model=DepartmentResponse)
 def create_department(
     payload: DepartmentCreate,
-    current_user: User = Depends(require_roles("admin")),
+    current_user: User = Depends(require_roles("admin", "superadmin")),
     db: Session = Depends(get_db)
 ):
-    existing = db.query(Department).filter(Department.id == payload.id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Department with this ID already exists")
-        
+    clean_id = payload.id.strip().lower().replace(" ", "_")
+    clean_code = payload.code.strip().upper()
+    clean_name = payload.name.strip()
+
+    if not clean_id or not clean_name or not clean_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Department ID, Name, and Code are required."
+        )
+
+    if db.query(Department).filter(Department.id == clean_id).first():
+        raise HTTPException(status_code=400, detail=f"Department with ID '{clean_id}' already exists.")
+    
+    if db.query(Department).filter(func.upper(Department.code) == clean_code).first():
+        raise HTTPException(status_code=400, detail=f"Department with Code '{clean_code}' already exists.")
+
+    if db.query(Department).filter(func.lower(Department.name) == clean_name.lower()).first():
+        raise HTTPException(status_code=400, detail=f"Department with Name '{clean_name}' already exists.")
+
     dept = Department(
-        id=payload.id,
-        name=payload.name,
-        code=payload.code,
-        description=payload.description,
-        icon=payload.icon,
+        id=clean_id,
+        name=clean_name,
+        code=clean_code,
+        description=payload.description.strip() if payload.description else None,
+        icon=payload.icon or "Building2",
         supervisor_id=payload.supervisor_id,
         is_active=payload.is_active
     )
     db.add(dept)
+    db.flush()
+
+    audit = AuditLog(
+        action="DEPARTMENT_CREATED",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({
+            "department_id": dept.id,
+            "name": dept.name,
+            "code": dept.code
+        })
+    )
+    db.add(audit)
     db.commit()
     db.refresh(dept)
-    return dept
+
+    return {
+        "id": dept.id,
+        "name": dept.name,
+        "code": dept.code,
+        "description": dept.description,
+        "icon": dept.icon,
+        "supervisor_id": dept.supervisor_id,
+        "is_active": dept.is_active,
+        "created_at": dept.created_at,
+        "active_ticket_count": 0,
+        "staff_count": 0
+    }
+
+@router.put("/{department_id}", response_model=DepartmentResponse)
+def update_department(
+    department_id: str,
+    payload: DepartmentUpdate,
+    current_user: User = Depends(require_roles("admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    dept = db.query(Department).filter(Department.id == department_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    updates = {}
+    if payload.name and payload.name.strip():
+        new_name = payload.name.strip()
+        dup = db.query(Department).filter(
+            func.lower(Department.name) == new_name.lower(),
+            Department.id != department_id
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail=f"Another department with name '{new_name}' already exists.")
+        dept.name = new_name
+        updates["name"] = new_name
+
+    if payload.code and payload.code.strip():
+        new_code = payload.code.strip().upper()
+        dup = db.query(Department).filter(
+            func.upper(Department.code) == new_code,
+            Department.id != department_id
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail=f"Another department with code '{new_code}' already exists.")
+        dept.code = new_code
+        updates["code"] = new_code
+
+    if payload.description is not None:
+        dept.description = payload.description.strip()
+        updates["description"] = dept.description
+
+    if payload.icon is not None:
+        dept.icon = payload.icon
+        updates["icon"] = dept.icon
+
+    if payload.supervisor_id is not None:
+        dept.supervisor_id = payload.supervisor_id if payload.supervisor_id > 0 else None
+        updates["supervisor_id"] = dept.supervisor_id
+
+    audit = AuditLog(
+        action="DEPARTMENT_UPDATED",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({"department_id": department_id, "changes": updates})
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(dept)
+
+    active_tkt_count = db.query(Ticket).filter(
+        Ticket.department_id == dept.id,
+        Ticket.status != "closed"
+    ).count()
+    staff_count = db.query(User).filter(
+        User.department_id == dept.id,
+        User.is_active == True
+    ).count()
+
+    return {
+        "id": dept.id,
+        "name": dept.name,
+        "code": dept.code,
+        "description": dept.description,
+        "icon": dept.icon,
+        "supervisor_id": dept.supervisor_id,
+        "is_active": dept.is_active,
+        "created_at": dept.created_at,
+        "active_ticket_count": active_tkt_count,
+        "staff_count": staff_count
+    }
+
+@router.patch("/{department_id}/status")
+def toggle_department_status(
+    department_id: str,
+    payload: DepartmentStatusToggle,
+    current_user: User = Depends(require_roles("admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    dept = db.query(Department).filter(Department.id == department_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    dept.is_active = payload.is_active
+    audit = AuditLog(
+        action="DEPARTMENT_STATUS_TOGGLED",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({
+            "department_id": department_id,
+            "is_active": dept.is_active
+        })
+    )
+    db.add(audit)
+    db.commit()
+    return {
+        "success": True,
+        "department_id": department_id,
+        "is_active": dept.is_active,
+        "message": f"Department '{dept.name}' is now {'active' if dept.is_active else 'inactive'}."
+    }
+
+@router.get("/{department_id}/dependencies")
+def get_department_dependencies(
+    department_id: str,
+    current_user: User = Depends(require_roles("admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Inspects active staff and unresolved tickets before department deletion.
+    Enforces safe deletion rules:
+    - If active staff or unresolved tickets exist, can_delete is False.
+    """
+    dept = db.query(Department).filter(Department.id == department_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    staff_members = db.query(User).filter(
+        User.department_id == department_id,
+        User.is_active == True
+    ).all()
+    
+    unresolved_tickets = db.query(Ticket).filter(
+        Ticket.department_id == department_id,
+        Ticket.status != "closed"
+    ).all()
+
+    historical_tickets_count = db.query(Ticket).filter(
+        Ticket.department_id == department_id
+    ).count()
+
+    can_delete = len(staff_members) == 0 and len(unresolved_tickets) == 0
+
+    blocking_reasons = []
+    if staff_members:
+        blocking_reasons.append(f"{len(staff_members)} active staff member(s) assigned")
+    if unresolved_tickets:
+        blocking_reasons.append(f"{len(unresolved_tickets)} unresolved ticket(s) in progress")
+
+    return {
+        "can_delete": can_delete,
+        "can_safely_delete": can_delete,
+        "active_staff_count": len(staff_members),
+        "unresolved_tickets_count": len(unresolved_tickets),
+        "unresolved_ticket_count": len(unresolved_tickets),
+        "historical_tickets_count": historical_tickets_count,
+        "total_historical_tickets": historical_tickets_count,
+        "blocking_reason": "; ".join(blocking_reasons) if blocking_reasons else None,
+        "active_staff": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "employee_id": s.employee_id,
+                "role": s.role,
+                "designation": s.designation
+            }
+            for s in staff_members
+        ],
+        "unresolved_tickets": [
+            {
+                "id": t.id,
+                "ticket_number": t.ticket_number,
+                "title": t.title,
+                "status": t.status,
+                "priority": t.priority,
+                "room_number": t.room_number
+            }
+            for t in unresolved_tickets
+        ]
+    }
+
+@router.post("/{department_id}/reassign")
+def reassign_department_dependencies(
+    department_id: str,
+    payload: DepartmentReassignRequest,
+    current_user: User = Depends(require_roles("admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Reassigns affected staff and open tickets before department removal.
+    Keeps historical records understandable and intact.
+    """
+    source_dept = db.query(Department).filter(Department.id == department_id).first()
+    if not source_dept:
+        raise HTTPException(status_code=404, detail="Source department not found.")
+
+    target_dept = db.query(Department).filter(
+        Department.id == payload.target_department_id,
+        Department.is_active == True
+    ).first()
+    if not target_dept:
+        raise HTTPException(status_code=400, detail="Target department not found or is inactive.")
+
+    if source_dept.id == target_dept.id:
+        raise HTTPException(status_code=400, detail="Source and target departments cannot be identical.")
+
+    reassigned_staff_count = 0
+    if payload.reassign_staff:
+        staff_list = db.query(User).filter(User.department_id == department_id).all()
+        for s in staff_list:
+            s.department_id = target_dept.id
+            reassigned_staff_count += 1
+
+    reassigned_tickets_count = 0
+    if payload.reassign_tickets:
+        tickets = db.query(Ticket).filter(
+            Ticket.department_id == department_id,
+            Ticket.status != "closed"
+        ).all()
+        for t in tickets:
+            t.department_id = target_dept.id
+            reassigned_tickets_count += 1
+
+    audit = AuditLog(
+        action="DEPARTMENT_DEPENDENCIES_REASSIGNED",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({
+            "source_department": source_dept.id,
+            "target_department": target_dept.id,
+            "staff_reassigned": reassigned_staff_count,
+            "tickets_reassigned": reassigned_tickets_count
+        })
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully reassigned {reassigned_staff_count} staff and {reassigned_tickets_count} tickets from '{source_dept.name}' to '{target_dept.name}'.",
+        "staff_reassigned": reassigned_staff_count,
+        "tickets_reassigned": reassigned_tickets_count
+    }
+
+@router.delete("/{department_id}")
+def delete_department(
+    department_id: str,
+    current_user: User = Depends(require_roles("admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Safe deletion rules:
+    - Never delete historical patient submissions, ticket records, or audit events merely because a department is removed.
+    - If a department has active staff or unresolved tickets, explain dependencies and require reassignment or deactivation before deletion.
+    - If historical closed tickets exist, marks department as archived/inactive to preserve audit integrity.
+    - If zero references exist, cleanly deletes the record.
+    """
+    dept = db.query(Department).filter(Department.id == department_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    # Check active staff
+    active_staff_count = db.query(User).filter(
+        User.department_id == department_id,
+        User.is_active == True
+    ).count()
+
+    # Check unresolved tickets
+    unresolved_tickets_count = db.query(Ticket).filter(
+        Ticket.department_id == department_id,
+        Ticket.status != "closed"
+    ).count()
+
+    if active_staff_count > 0 or unresolved_tickets_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Cannot delete department '{dept.name}': It has {active_staff_count} active staff member(s) "
+                f"and {unresolved_tickets_count} unresolved ticket(s). Please reassign staff and tickets, "
+                f"or deactivate the department instead of deleting it."
+            )
+        )
+
+    # Check historical tickets
+    historical_count = db.query(Ticket).filter(Ticket.department_id == department_id).count()
+
+    if historical_count > 0:
+        # Safe archival: Keep historical record integrity intact
+        dept.is_active = False
+        audit_mode = "ARCHIVED_SAFE"
+        msg = f"Department '{dept.name}' has been archived and removed from active operations. Historical records ({historical_count} tickets) remain fully preserved."
+    else:
+        # Zero historical records: clean deletion
+        db.delete(dept)
+        audit_mode = "PERMANENTLY_REMOVED"
+        msg = f"Unused department '{dept.name}' has been permanently removed."
+
+    audit = AuditLog(
+        action=f"DEPARTMENT_DELETED_{audit_mode}",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({
+            "department_id": department_id,
+            "department_name": dept.name,
+            "mode": audit_mode,
+            "historical_tickets_preserved": historical_count
+        })
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "success": True,
+        "department_id": department_id,
+        "mode": audit_mode,
+        "message": msg
+    }
 
 @router.get("/{department_id}/staff")
 def get_department_staff(department_id: str, db: Session = Depends(get_db)):
@@ -79,8 +448,7 @@ def get_department_staff(department_id: str, db: Session = Depends(get_db)):
             "role": s.role,
             "phone": s.phone,
             "employee_id": s.employee_id,
-            "designation": s.designation,
-            "avatar_url": s.avatar_url
+            "designation": s.designation
         }
         for s in staff
     ]

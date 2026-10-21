@@ -116,6 +116,17 @@ class WhatsAppService:
                     msg_record.provider_message_id = msg_id or "meta_accepted"
                     msg_record.delivery_status = "accepted"
                     logger.info(f"WhatsApp sent successfully to {normalized_phone} [ID: {msg_id}]")
+            except urllib.error.HTTPError as he:
+                error_body = ""
+                try:
+                    error_body = he.read().decode("utf-8")
+                    err_json = json.loads(error_body)
+                    error_msg = err_json.get("error", {}).get("message", error_body)
+                except Exception:
+                    error_msg = error_body or str(he)
+                msg_record.delivery_status = "failed"
+                msg_record.error_message = error_msg
+                logger.error(f"WhatsApp API HTTP Error for {normalized_phone}: {error_msg}")
             except Exception as e:
                 msg_record.delivery_status = "failed"
                 msg_record.error_message = str(e)

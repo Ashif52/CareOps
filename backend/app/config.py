@@ -8,9 +8,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "CareOps AI"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api"
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "careops_ai_enterprise_super_secret_key_2026_production")
+    DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))  # 60 minutes default
     
     # Database: SQLite by default for zero-setup local execution, PostgreSQL supported via env
     DATABASE_URL: str = os.getenv(
@@ -30,13 +32,14 @@ class Settings(BaseSettings):
     AI_AUTO_CONFIRM_THRESHOLD: float = 0.85
     AI_INCONCLUSIVE_THRESHOLD: float = 0.55
     
-    # CORS
+    # CORS - strictly define allowed origins, never include wildcard "*" with credentials
     BACKEND_CORS_ORIGINS: list[str] = [
+        origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()
+    ] if os.getenv("ALLOWED_ORIGINS") else [
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
-        "*"
     ]
 
     # Google Business Profile & Reviews Module
@@ -67,5 +70,16 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+if not settings.SECRET_KEY:
+    if settings.ENVIRONMENT == "production":
+        raise RuntimeError("FATAL SECURITY ERROR: SECRET_KEY environment variable must be set in production!")
+    else:
+        import logging
+        logging.getLogger("careops.security").warning(
+            "WARNING: No SECRET_KEY set. Using local development secret. DO NOT RUN IN PRODUCTION WITHOUT SECRET_KEY!"
+        )
+        settings.SECRET_KEY = "careops_dev_secret_key_change_me_in_production_2026"
+
 # Ensure uploads directory exists
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+

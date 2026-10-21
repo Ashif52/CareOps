@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.database import SessionLocal
 from app.config import settings
-from app.models import Ticket, Department, Room, EscalationLog, AuditLog, User
+from app.models import Ticket, Department, Room, EscalationLog, AuditLog, User, EscalationSetting
 from app.services.notification_service import NotificationService
 from app.services.sla_engine import SLAEngine
 
@@ -39,8 +39,17 @@ def test_notification_service_routes_to_work_email_and_maintenance(db_session: S
     # Temporarily configure WORK_EMAIL
     original_work_email = settings.WORK_EMAIL
     settings.WORK_EMAIL = "operations.lead@hospital-network.com"
+    esc = db_session.query(EscalationSetting).filter(EscalationSetting.id == 1).first()
+    original_db_work_email = esc.work_email if esc else None
+    if esc:
+        esc.work_email = "operations.lead@hospital-network.com"
+        db_session.commit()
 
     try:
+        # Clean up any leftover test tickets first
+        db_session.query(Ticket).filter(Ticket.ticket_number == "TEST-MNT-ESCALATE-1").delete()
+        db_session.commit()
+
         # Create a sample maintenance ticket
         dept = db_session.query(Department).filter(Department.id == "maintenance").first()
         room = db_session.query(Room).first()
@@ -91,6 +100,9 @@ def test_notification_service_routes_to_work_email_and_maintenance(db_session: S
 
     finally:
         settings.WORK_EMAIL = original_work_email
+        if esc:
+            esc.work_email = original_db_work_email
+            db_session.commit()
 
 
 def test_patient_escalate_endpoint(db_session: Session):
@@ -100,6 +112,9 @@ def test_patient_escalate_endpoint(db_session: Session):
     the ticket state and returns SMTPS dispatch details.
     """
     # Create a fresh patient ticket
+    db_session.query(Ticket).filter(Ticket.ticket_number == "TEST-PAT-ESC-99").delete()
+    db_session.commit()
+
     room = db_session.query(Room).first()
     ticket = Ticket(
         ticket_number="TEST-PAT-ESC-99",

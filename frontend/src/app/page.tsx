@@ -23,6 +23,8 @@ import { SystemSecurityView } from "@/components/superadmin/SystemSecurityView";
 import { SuperAdminAuditView } from "@/components/superadmin/SuperAdminAuditView";
 import { DatabaseMaintenanceView } from "@/components/superadmin/DatabaseMaintenanceView";
 import { NPSModuleView } from "@/components/nps/NPSModuleView";
+import { EmailDeliveryManager } from "@/components/EmailDeliveryManager";
+import { PatientAccountsView } from "@/components/PatientAccountsView";
 import { QrCode, Bell, Sparkles, Lock, Trash2, CheckCircle2 } from "lucide-react";
 
 import {
@@ -529,6 +531,7 @@ export default function CareOpsApp() {
             initialRoomToken={patientRoomToken}
             allRooms={rooms}
             onClose={() => setAppMode("gateway")}
+            currentUser={currentUser}
           />
         </div>
 
@@ -715,6 +718,10 @@ export default function CareOpsApp() {
               currentUser={currentUser}
             />
           )}
+
+          {currentTab === "patient-accounts" && <PatientAccountsView />}
+
+          {currentTab === "emails" && <EmailDeliveryManager />}
 
           {currentTab === "rooms" && (
             <QRRoomManager

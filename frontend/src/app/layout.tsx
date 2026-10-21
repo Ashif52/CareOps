@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CareOps AI — Hospital Service Management & AI Verification Platform",
-  description: "Enterprise hospital operational service request, maintenance verification, patient feedback, and SLA escalation platform.",
+  title: "Happy Care — Hospital Service Management & Operations Platform",
+  description: "Happy Care hospital operational service request, maintenance verification, patient feedback, and SLA escalation platform.",
 };
 
 export default function RootLayout({

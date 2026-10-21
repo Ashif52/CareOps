@@ -32,12 +32,16 @@ class MaintenancePurgeRequest(BaseModel):
     categories: List[str]
     confirm_phrase: str  # Must match "CONFIRM_CLEAR"
 
+class ClearDatabaseRequest(BaseModel):
+    mode: str = "reset_all"
+    confirm_phrase: str
+
 class AdminCreateRequest(BaseModel):
     name: str
     email: str
     phone: Optional[str] = None
     designation: Optional[str] = "Hospital Administrator"
-    password: Optional[str] = "CareOpsAdmin2026!"
+    password: str
     permissions: Optional[List[str]] = None
 
 class AdminUpdateRequest(BaseModel):
@@ -277,8 +281,42 @@ def execute_maintenance_clearing(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database maintenance operation failed: {str(e)}"
+            detail="Database maintenance operation failed. Please check system logs for diagnostics."
         )
+
+@router.post("/clear-database")
+def clear_or_reset_database(
+    payload: ClearDatabaseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("superadmin"))
+):
+    """
+    SUPERADMIN-ONLY:
+    Safely resets or purges demo data and reseeds the system.
+    Requires 'CONFIRM_CLEAR' confirmation phrase.
+    """
+    if payload.confirm_phrase != "CONFIRM_CLEAR":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation phrase mismatch. You must explicitly type 'CONFIRM_CLEAR' to confirm this operation."
+        )
+    
+    all_categories = [
+        "demo_ai_verifications", "demo_notifications", "demo_nps",
+        "demo_analytics", "demo_tickets", "demo_patients"
+    ]
+    purge_req = MaintenancePurgeRequest(categories=all_categories, confirm_phrase="CONFIRM_CLEAR")
+    execute_maintenance_clearing(purge_req, db, current_user)
+    
+    if payload.mode == "reset_all":
+        from app.seed import seed_database
+        seed_database()
+        
+    return {
+        "success": True,
+        "message": "Database reset completed successfully and demo records restored."
+    }
+
 
 
 # ==============================================================================
@@ -339,7 +377,7 @@ def create_admin_account(
         is_active=True,
         hashed_password=pw_hash,
         permissions_override=json.dumps(initial_perms),
-        avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+        avatar_url=None
     )
     db.add(new_admin)
     db.flush()
@@ -668,4 +706,16 @@ def get_superadmin_audit_logs(
             }
             for m in maintenance_logs
         ]
+    }
+
+from app.services.rbac_service import get_permission_matrix_catalog
+
+@router.get("/permissions/catalog")
+def get_system_permission_catalog(
+    is_superadmin: bool = False,
+    current_user: User = Depends(get_current_user)
+):
+    """Catalog of granular modules and actions for permission matrix"""
+    return {
+        "catalog": get_permission_matrix_catalog(is_superadmin=is_superadmin or (current_user.role == "superadmin"))
     }

@@ -94,6 +94,9 @@ export interface User {
   avatar_url?: string | null;
   is_active: boolean;
   employee_id?: string | null;
+  patient_id?: string | null;
+  room_number?: string | null;
+  bed_number?: string | null;
   designation?: string | null;
   account_status?: string;
   failed_login_attempts?: number;
@@ -102,6 +105,51 @@ export interface User {
   last_login_at?: string | null;
   permissions?: string[];
   created_at: string;
+}
+
+export interface EmailLog {
+  id: number;
+  ticket_id?: number | null;
+  recipient_email: string;
+  recipient_name?: string | null;
+  recipient_role?: string | null;
+  email_type?: string | null;
+  subject: string;
+  body_text?: string | null;
+  body_html?: string | null;
+  status: "queued" | "sent" | "failed" | "retrying";
+  attempts: number;
+  max_attempts: number;
+  error_message?: string | null;
+  smtp_host_used?: string | null;
+  sent_at?: string | null;
+  created_at: string;
+}
+
+export interface EmailStats {
+  total: number;
+  sent: number;
+  queued: number;
+  retrying: number;
+  failed: number;
+  success_rate: number;
+  smtp_configured: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  sender_email: string;
+}
+
+export interface PatientAccount {
+  id: number;
+  patient_id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  room_number?: string | null;
+  bed_number?: string | null;
+  is_active: boolean;
+  created_at: string;
+  last_login_at?: string | null;
 }
 
 export interface StaffMember {
@@ -579,8 +627,12 @@ export const api = {
   healthCheck: () => fetch(`${getApiBase()}/health`, { method: "GET", cache: "no-store" }).then(r => r.json()),
 
   // Auth
-  login: (creds: { email: string; password: string }) =>
-    fetchWithAuth("/auth/login", { method: "POST", body: JSON.stringify(creds) }),
+  login: (creds: {
+    email?: string;
+    login_identifier?: string;
+    password: string;
+    portal_hint?: "admin" | "staff" | "patient";
+  }) => fetchWithAuth("/auth/login", { method: "POST", body: JSON.stringify(creds) }),
   register: (data: {
     name: string;
     email: string;
@@ -590,8 +642,32 @@ export const api = {
     designation?: string;
     phone?: string;
   }) => fetchWithAuth("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+  changePassword: (data: { current_password?: string; new_password: string; confirm_password?: string }) =>
+    fetchWithAuth("/auth/change-password", { method: "POST", body: JSON.stringify(data) }),
+  forgotPassword: (data: { email_or_identifier: string; portal_hint?: string }) =>
+    fetchWithAuth("/auth/forgot-password", { method: "POST", body: JSON.stringify(data) }),
+  resetPasswordWithToken: (data: { token: string; new_password: string }) =>
+    fetchWithAuth("/auth/reset-password-with-token", { method: "POST", body: JSON.stringify(data) }),
   getMe: () => fetchWithAuth("/auth/me"),
   getDemoUsers: () => fetchWithAuth("/auth/demo-users"),
+
+  // Dedicated Patient Portal Routes
+  registerPatient: (data: {
+    name: string;
+    email?: string;
+    phone: string;
+    password?: string;
+    room_number?: string;
+    bed_number?: string;
+  }) => fetchWithAuth("/patient/register", { method: "POST", body: JSON.stringify(data) }),
+  getMyTickets: () => fetchWithAuth("/patient/my-tickets"),
+  updatePatientProfile: (data: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    room_number?: string;
+    bed_number?: string;
+  }) => fetchWithAuth("/patient/profile", { method: "PUT", body: JSON.stringify(data) }),
 
   // Patient QR & Guest Session
   getRoomByToken: (token: string) => fetchWithAuth(`/patient/room/${token}`),
@@ -662,9 +738,20 @@ export const api = {
     fetchWithAuth(`/ai-verify/${jobId}/review`, { method: "POST", body: JSON.stringify(data) }),
 
   // Departments & Staff
-  getDepartments: () => fetchWithAuth("/departments"),
+  getDepartments: (includeInactive: boolean = false) =>
+    fetchWithAuth(`/departments?include_inactive=${includeInactive}`),
   createDepartment: (data: any) =>
     fetchWithAuth("/departments", { method: "POST", body: JSON.stringify(data) }),
+  updateDepartment: (deptId: string, data: any) =>
+    fetchWithAuth(`/departments/${deptId}`, { method: "PUT", body: JSON.stringify(data) }),
+  toggleDepartmentStatus: (deptId: string, is_active: boolean) =>
+    fetchWithAuth(`/departments/${deptId}/status`, { method: "PATCH", body: JSON.stringify({ is_active }) }),
+  getDepartmentDependencies: (deptId: string) =>
+    fetchWithAuth(`/departments/${deptId}/dependencies`),
+  reassignDepartmentDependencies: (deptId: string, data: { target_department_id: string; reassign_staff?: boolean; reassign_tickets?: boolean }) =>
+    fetchWithAuth(`/departments/${deptId}/reassign`, { method: "POST", body: JSON.stringify(data) }),
+  deleteDepartment: (deptId: string) =>
+    fetchWithAuth(`/departments/${deptId}`, { method: "DELETE" }),
   getDepartmentStaff: (deptId: string) => fetchWithAuth(`/departments/${deptId}/staff`),
 
   // Rooms & Network QR
@@ -718,6 +805,61 @@ export const api = {
     fetchWithAuth(`/staff/${id}/reset-password`, { method: "POST", body: JSON.stringify(data) }),
   getRolesMetadata: () => fetchWithAuth("/staff/meta/roles"),
   getSecurityEvents: () => fetchWithAuth("/staff/meta/security-events"),
+
+  // ============================================================================
+  // PATIENT ACCOUNTS MANAGEMENT (ADMIN PORTAL)
+  // ============================================================================
+  getPatientsList: (params?: { search?: string; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") {
+          searchParams.append(k, String(v));
+        }
+      });
+    }
+    const qs = searchParams.toString();
+    return fetchWithAuth(qs ? `/staff/patients/list?${qs}` : "/staff/patients/list");
+  },
+  createPatientAccount: (data: {
+    name: string;
+    phone: string;
+    email?: string;
+    password?: string;
+    room_number?: string;
+    bed_number?: string;
+  }) => fetchWithAuth("/staff/patients", { method: "POST", body: JSON.stringify(data) }),
+  resetPatientPassword: (id: number, data?: { temporary_password?: string }) =>
+    fetchWithAuth(`/staff/patients/${id}/reset-password`, { method: "POST", body: JSON.stringify(data || {}) }),
+  deactivatePatient: (id: number) =>
+    fetchWithAuth(`/staff/patients/${id}/deactivate`, { method: "POST" }),
+  activatePatient: (id: number) =>
+    fetchWithAuth(`/staff/patients/${id}/activate`, { method: "POST" }),
+
+  // ============================================================================
+  // EMAIL SYSTEM & REAL SMTP NOTIFICATIONS (ADMIN PORTAL)
+  // ============================================================================
+  getEmailLogs: (params?: { status?: string; limit?: number; offset?: number; search?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") {
+          searchParams.append(k, String(v));
+        }
+      });
+    }
+    const qs = searchParams.toString();
+    return fetchWithAuth(qs ? `/emails?${qs}` : "/emails");
+  },
+  getEmailStats: () => fetchWithAuth("/emails/stats"),
+  testEmailSMTP: (recipient_email: string) =>
+    fetchWithAuth("/emails/test", { method: "POST", body: JSON.stringify({ recipient_email }) }),
+  sendMaintenanceNotice: (data?: { ticket_id?: number; recipient_email?: string }) =>
+    fetchWithAuth("/emails/send-maintenance-notice", { method: "POST", body: JSON.stringify(data || {}) }),
+  retryFailedEmails: () => fetchWithAuth("/emails/retry", { method: "POST" }),
+  getEmailConfig: () => fetchWithAuth("/emails/config"),
+  updateEmailConfig: (data: any) =>
+    fetchWithAuth("/emails/config", { method: "PUT", body: JSON.stringify(data) }),
 
   // System & Superadmin Operations
   clearDatabase: (data: { mode: "purge_operational" | "reset_all"; confirm_phrase: string }) =>

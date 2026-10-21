@@ -39,15 +39,19 @@ import {
   Volume2,
   MessageSquare,
   ThumbsUp,
-  Star
+  Star,
+  KeyRound,
+  Mail
 } from "lucide-react";
 import { api, formatTime } from "@/lib/api";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 
 interface PatientPortalProps {
   onClose?: () => void;
   initialRoomToken?: string;
   allRooms?: any[];
+  currentUser?: any;
 }
 
 interface RoomData {
@@ -60,7 +64,7 @@ interface RoomData {
   departments?: any[];
 }
 
-export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPortalProps) {
+export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser }: PatientPortalProps) {
   const currentToken = initialRoomToken || "CARE-RM204-7X9Q";
 
   // State: QR Resolution & Validation
@@ -85,14 +89,75 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
     return /^\+?[1-9]\d{7,14}$/.test(cleaned);
   };
 
+  const isValidEmail = (emailStr: string): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr.trim());
+  };
+
   // Form Fields
   const [selectedDept, setSelectedDept] = useState<string>("maintenance");
   const [categoryName, setCategoryName] = useState<string>("Lighting / Electrical");
   const [title, setTitle] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [patientContact, setPatientContact] = useState<string>("");
+  const [patientContact, setPatientContact] = useState<string>(currentUser?.phone || "");
+  const [patientEmail, setPatientEmail] = useState<string>(currentUser?.email || "");
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // Dedicated Patient Account State
+  const [patientView, setPatientView] = useState<"lodge" | "my_tickets" | "profile">("lodge");
+  const [myTickets, setMyTickets] = useState<any[]>([]);
+  const [isLoadingMyTickets, setIsLoadingMyTickets] = useState(false);
+  const [showChangePassModal, setShowChangePassModal] = useState(false);
+  const [profilePhone, setProfilePhone] = useState(currentUser?.phone || "");
+  const [profileEmail, setProfileEmail] = useState(currentUser?.email || "");
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  useEffect(() => {
+    if (currentUser?.phone) {
+      setPatientContact(currentUser.phone);
+      setProfilePhone(currentUser.phone);
+    }
+    if (currentUser?.email) {
+      setPatientEmail(currentUser.email);
+      setProfileEmail(currentUser.email);
+    }
+  }, [currentUser]);
+
+  const fetchMyTickets = async () => {
+    setIsLoadingMyTickets(true);
+    try {
+      const data: any = await api.getMyTickets();
+      setMyTickets(data || []);
+    } catch (err) {
+      console.error("Failed to load patient tickets:", err);
+    } finally {
+      setIsLoadingMyTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    if (patientView === "my_tickets" || currentUser) {
+      fetchMyTickets();
+    }
+  }, [patientView, currentUser]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsUpdatingProfile(true);
+    setProfileSuccessMsg(null);
+    try {
+      await api.updatePatientProfile({
+        phone: profilePhone.trim() || undefined,
+        email: profileEmail.trim() || undefined,
+      });
+      setProfileSuccessMsg("Profile contact information updated successfully.");
+    } catch (err: any) {
+      alert(`Update failed: ${err.message || err}`);
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -141,7 +206,6 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
     resolution_summary?: string | null;
     assigned_staff_name?: string | null;
     assigned_staff_designation?: string | null;
-    assigned_staff_avatar?: string | null;
     ready_for_feedback?: boolean;
     is_eligible_for_feedback?: boolean;
   } | null>(null);
@@ -212,7 +276,6 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                 resolution_summary: live.resolution_summary,
                 assigned_staff_name: live.assigned_staff_name,
                 assigned_staff_designation: live.assigned_staff_designation,
-                assigned_staff_avatar: live.assigned_staff_avatar,
                 ready_for_feedback: live.ready_for_feedback || live.is_eligible_for_feedback,
                 is_eligible_for_feedback: live.is_eligible_for_feedback,
               }
@@ -573,6 +636,12 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
       return;
     }
 
+    const trimmedEmail = patientEmail.trim();
+    if (trimmedEmail && !isValidEmail(trimmedEmail)) {
+      alert("Please enter a valid email address (e.g. patient@example.com) or leave it blank.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await api.submitPatientTicket({
@@ -585,6 +654,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
         voice_transcription: transcription || undefined,
         patient_contact: normalizedPhone,
         photo_base64: photoBase64 || undefined,
+        patient_email: trimmedEmail ? trimmedEmail.toLowerCase() : (currentUser?.email || undefined),
         idempotency_key: idempotencyKey,
       });
 
@@ -646,7 +716,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
           </div>
           <div>
             <div className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
-              <span>CareOps Bedside Assist</span>
+              <span>Happy Care Bedside Assist</span>
               <span className="text-[10px] text-[#16805D] bg-[#EDF7F2] px-1.5 py-0.5 rounded-full font-bold">
                 Live Portal
               </span>
@@ -721,10 +791,265 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
           </div>
         ) : (
           <>
-            {/* STEP 1: CATEGORY SELECTION (Prefilled Room Location) */}
-            {step === "categories" && (
+            {currentUser && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-[#176B63]/10 text-[#176B63] flex items-center justify-center font-bold text-xs">
+                      {currentUser.name?.[0] || "P"}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs">{currentUser.name}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        ID: {currentUser.patient_id || "PAT-10001"} • Room {roomData?.room_number || currentUser.room_number || "204"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPatientView("lodge")}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                        patientView === "lodge"
+                          ? "bg-white text-slate-900 shadow-2xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      New Request
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPatientView("my_tickets");
+                        fetchMyTickets();
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        patientView === "my_tickets"
+                          ? "bg-white text-[#176B63] shadow-2xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      <span>My Requests</span>
+                      {myTickets.length > 0 && (
+                        <span className="h-4 min-w-4 px-1 rounded-full bg-[#176B63] text-white text-[10px] flex items-center justify-center font-mono">
+                          {myTickets.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPatientView("profile")}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                        patientView === "profile"
+                          ? "bg-white text-slate-900 shadow-2xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Account
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 1: MY TICKETS HISTORY */}
+            {patientView === "my_tickets" && (
               <div className="space-y-4 animate-in fade-in duration-200">
-                {/* Verified Room Location Card */}
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                  <h2 className="text-base font-black text-slate-900">My Service Requests</h2>
+                  <button
+                    onClick={fetchMyTickets}
+                    disabled={isLoadingMyTickets}
+                    className="text-xs font-semibold text-[#176B63] hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isLoadingMyTickets ? "animate-spin" : ""}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {isLoadingMyTickets ? (
+                  <div className="py-12 text-center text-xs text-slate-500">
+                    <div className="animate-spin h-6 w-6 border-2 border-[#176B63] border-t-transparent rounded-full mx-auto mb-2" />
+                    <span>Loading your requests...</span>
+                  </div>
+                ) : myTickets.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center space-y-2">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+                    <h3 className="font-bold text-sm text-slate-800">No Active Service Requests</h3>
+                    <p className="text-xs text-slate-500">
+                      You have not submitted any room complaints or service requests yet.
+                    </p>
+                    <button
+                      onClick={() => setPatientView("lodge")}
+                      className="mt-2 px-4 py-2 rounded-xl bg-[#176B63] text-white text-xs font-bold cursor-pointer"
+                    >
+                      Lodge Service Request Now →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {myTickets.map((t) => (
+                      <div
+                        key={t.id}
+                        className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-xs text-[#176B63]">
+                              {t.ticket_number}
+                            </span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 capitalize">
+                              {t.category || t.department_id}
+                            </span>
+                          </div>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              t.status === "closed"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : t.status === "resolution_submitted"
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : t.status === "in_progress"
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-slate-100 text-slate-700 border border-slate-200"
+                            }`}
+                          >
+                            {t.status.replace("_", " ")}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-900">{t.title}</h4>
+                          <p className="text-xs text-slate-600 mt-0.5 line-clamp-2">{t.description}</p>
+                        </div>
+
+                        {t.resolution_summary && (
+                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-0.5">
+                            <strong className="block font-semibold">Resolution Summary:</strong>
+                            <p className="text-[11px] text-emerald-800">{t.resolution_summary}</p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
+                          <span>Submitted: {new Date(t.created_at).toLocaleDateString()}</span>
+                          <span className="font-mono text-slate-500">Room {t.room_number || "204"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VIEW 2: PATIENT ACCOUNT PROFILE */}
+            {patientView === "profile" && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <div className="pb-1 border-b border-slate-200">
+                  <h2 className="text-base font-black text-slate-900">Patient Account & Profile</h2>
+                  <p className="text-xs text-slate-500">
+                    Manage your verified bedside contact details and portal credentials.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Patient Name</span>
+                      <strong className="text-slate-800">{currentUser?.name}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Patient ID</span>
+                      <strong className="text-[#176B63] font-mono">{currentUser?.patient_id || "PAT-10001"}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Assigned Ward / Room</span>
+                      <span className="text-slate-700 font-medium">Room {roomData?.room_number || currentUser?.room_number || "204"}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Account Status</span>
+                      <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Active
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleUpdateProfile} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3 text-xs">
+                  <h3 className="font-bold text-slate-900 text-xs">Update Contact Information</h3>
+
+                  {profileSuccessMsg && (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>{profileSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">Mobile Contact Phone</label>
+                    <input
+                      type="tel"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value)}
+                      placeholder="+1-555-0192"
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={profileEmail}
+                      onChange={(e) => setProfileEmail(e.target.value)}
+                      placeholder="patient@gmail.com"
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63]"
+                    />
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      disabled={isUpdatingProfile}
+                      className="px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#125852] disabled:opacity-50 text-white font-bold text-xs cursor-pointer shadow-2xs"
+                    >
+                      {isUpdatingProfile ? "Saving..." : "Save Contact Info"}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                  <h3 className="font-bold text-slate-900 text-xs">Security & Credentials</h3>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowChangePassModal(true)}
+                      className="flex-1 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <KeyRound className="h-3.5 w-3.5 text-[#176B63]" />
+                      <span>Change Password</span>
+                    </button>
+                    {onClose && (
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs cursor-pointer"
+                      >
+                        Log Out
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 3: LODGE SERVICE REQUEST FLOW (Original Flow) */}
+            {patientView === "lodge" && (
+              <>
+                {/* STEP 1: CATEGORY SELECTION (Prefilled Room Location) */}
+                {step === "categories" && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* Verified Room Location Card */}
                 <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-[#176B63] uppercase tracking-wider">
@@ -988,26 +1313,58 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                   )}
                 </div>
 
-                {/* Mobile Phone Number (Required for WhatsApp & Live Tracking) */}
-                <div>
-                  <label className="text-xs font-bold text-[#0F172A] flex items-center justify-between mb-1">
-                    <span>Mobile Phone Number *</span>
-                    <span className="text-[10px] text-[#16805D] font-bold">WhatsApp Enabled</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      required
-                      placeholder="e.g. +1 555-0192 or +91 98450 11223"
-                      value={patientContact}
-                      onChange={(e) => setPatientContact(e.target.value)}
-                      className="w-full p-3 rounded-2xl border-2 border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#176B63] pl-9"
-                    />
-                    <Phone className="h-4 w-4 text-[#64748B] absolute left-3 top-3.5" />
+                {/* Patient Contact Information: Mobile Phone & Email Address */}
+                <div className="space-y-4">
+                  {/* Mobile Phone Number (Required for WhatsApp & Live Tracking) */}
+                  <div>
+                    <label className="text-xs font-bold text-[#0F172A] flex items-center justify-between mb-1">
+                      <span className="flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 text-[#176B63]" />
+                        <span>Mobile Phone Number *</span>
+                      </span>
+                      <span className="text-[10px] text-[#16805D] font-bold">WhatsApp Enabled</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        required
+                        placeholder="e.g. +1 555-0192 or +91 98450 11223"
+                        value={patientContact}
+                        onChange={(e) => setPatientContact(e.target.value)}
+                        className="w-full p-3 rounded-2xl border-2 border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#176B63] pl-9"
+                      />
+                      <Phone className="h-4 w-4 text-[#64748B] absolute left-3 top-3.5" />
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-1">
+                      Mandatory for live WhatsApp resolution updates and tracking link delivery.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-[#64748B] mt-1">
-                    Mandatory for live WhatsApp resolution updates and tracking link delivery.
-                  </p>
+
+                  {/* Patient Email Address (Optional / For Dispatch & Resolution Receipts) */}
+                  <div>
+                    <label className="text-xs font-bold text-[#0F172A] flex items-center justify-between mb-1">
+                      <span className="flex items-center gap-1.5">
+                        <Mail className="h-3.5 w-3.5 text-[#176B63]" />
+                        <span>Email Address (Optional)</span>
+                      </span>
+                      <span className="text-[10px] text-[#16805D] font-bold bg-[#EDF7F2] px-2 py-0.5 rounded-full border border-[#A6E1CE]">
+                        Email Updates
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        placeholder="e.g. patient@example.com (for ticket confirmation & resolution receipt)"
+                        value={patientEmail}
+                        onChange={(e) => setPatientEmail(e.target.value)}
+                        className="w-full p-3 rounded-2xl border-2 border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#176B63] pl-9"
+                      />
+                      <Mail className="h-4 w-4 text-[#64748B] absolute left-3 top-3.5" />
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-1">
+                      Optional: enter email to receive ticket confirmation, digital tracking link, and care team resolution notes.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Submit Button */}
@@ -1167,7 +1524,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                     ? `${window.location.origin}/track/${submittedTicket.ticket_number}${submittedTicket.tracking_url?.includes("?token=") ? `?token=${submittedTicket.tracking_url.split("?token=")[1]}` : ""}`
                     : `https://care-ops-dusky.vercel.app/track/${submittedTicket.ticket_number}`;
 
-                  const waNoticeText = `*Official CareOps Hospital Confirmation Notice*\n\nYour complaint has been registered successfully.\n• Ticket Reference: *${submittedTicket.ticket_number}*\n• Service Location: *${submittedTicket.room_number}*\n• Department: *${submittedTicket.department}*\n\nTrack real-time resolution progress here:\n${fullTrackingUrl}`;
+                  const waNoticeText = `*Official Happy Care Hospital Confirmation Notice*\n\nYour complaint has been registered successfully.\n• Ticket Reference: *${submittedTicket.ticket_number}*\n• Service Location: *${submittedTicket.room_number}*\n• Department: *${submittedTicket.department}*\n\nTrack real-time resolution progress here:\n${fullTrackingUrl}`;
 
                   const cleanPhone = patientContact.replace(/[^\d+]/g, "").replace(/^\+/, "");
                   const waUrl = cleanPhone
@@ -1181,11 +1538,19 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                           <CheckCircle2 className="h-4 w-4" />
                           <span>Official Confirmation Notice</span>
                         </div>
-                        {patientContact && (
-                          <span className="text-[10px] font-bold text-[#16805D] bg-white px-2 py-0.5 rounded-full border border-[#A6E1CE]">
-                            WhatsApp: {patientContact}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          {patientContact && (
+                            <span className="text-[10px] font-bold text-[#16805D] bg-white px-2 py-0.5 rounded-full border border-[#A6E1CE]">
+                              WhatsApp: {patientContact}
+                            </span>
+                          )}
+                          {patientEmail && (
+                            <span className="text-[10px] font-bold text-[#1D4ED8] bg-white px-2 py-0.5 rounded-full border border-[#BFDBFE] flex items-center gap-1">
+                              <Mail className="h-3 w-3 text-[#1D4ED8]" />
+                              <span>Email: {patientEmail}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <p className="text-xs font-medium text-[#0F172A] leading-relaxed bg-white p-3.5 rounded-xl border border-[#CBD5E1]">
@@ -1265,7 +1630,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                     {[
                       {
                         label: "1. Request Registered",
-                        desc: "Saved in CareOps hospital database",
+                        desc: "Saved in Happy Care hospital database",
                         active: true,
                         time: submittedTicket.created_at,
                       },
@@ -1356,23 +1721,15 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                     <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F8FAFC] to-[#EEF4FD] border-2 border-[#BFDBFE] space-y-3 shadow-xs">
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          {submittedTicket.assigned_staff_avatar ? (
-                            <img
-                              src={submittedTicket.assigned_staff_avatar}
-                              alt={submittedTicket.assigned_staff_name || "Staff"}
-                              className="h-12 w-12 rounded-2xl object-cover border-2 border-[#176B63] shadow-xs"
-                            />
-                          ) : (
-                            <div className="h-12 w-12 rounded-2xl bg-[#176B63] text-white flex items-center justify-center font-black text-sm border-2 border-[#0F4F48] shadow-xs">
-                              {submittedTicket.assigned_staff_name
-                                ? submittedTicket.assigned_staff_name
-                                    .split(" ")
-                                    .map((n: string) => n[0])
-                                    .join("")
-                                    .slice(0, 2)
-                                : "ST"}
-                            </div>
-                          )}
+                          <div className="h-12 w-12 rounded-2xl bg-[#176B63] text-white flex items-center justify-center font-black text-sm border-2 border-[#0F4F48] shadow-xs">
+                            {submittedTicket.assigned_staff_name
+                              ? submittedTicket.assigned_staff_name
+                                  .split(" ")
+                                  .map((n: string) => n[0])
+                                  .join("")
+                                  .slice(0, 2)
+                              : "ST"}
+                          </div>
                           <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#16805D] border-2 border-white rounded-full flex items-center justify-center text-[9px] text-white font-bold">
                             ✓
                           </span>
@@ -1559,13 +1916,15 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
                 </div>
               </div>
             )}
+              </>
+            )}
           </>
         )}
       </main>
 
       {/* Footer Branding */}
       <footer className="p-4 border-t border-[#E2E8F0] bg-white text-center text-[11px] text-[#64748B]">
-        <span>CareOps AI Hospital Dignity & Service Assurance • Zero Patient App Download Required</span>
+        <span>Happy Care Hospital Dignity & Service Assurance • Zero Patient App Download Required</span>
       </footer>
 
       {/* Scannable Room QR Placard Modal */}
@@ -1585,6 +1944,13 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms }: PatientPo
           onClose={() => setShowQRModal(false)}
         />
       )}
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePassModal}
+        onClose={() => setShowChangePassModal(false)}
+        userRole="patient"
+      />
     </div>
   );
 }

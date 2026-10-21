@@ -32,7 +32,10 @@ import {
   Stethoscope,
   Receipt,
   Pill,
-  Trash2
+  Trash2,
+  Pencil,
+  Plus,
+  Power
 } from "lucide-react";
 import { Department, StaffMember, StaffMetrics, User as UserType, api, formatDateTime } from "@/lib/api";
 import { StaffDetailDrawer } from "@/components/StaffDetailDrawer";
@@ -40,6 +43,8 @@ import { CreateStaffModal } from "@/components/CreateStaffModal";
 import { RolesManagementModal } from "@/components/RolesManagementModal";
 import { SecurityEventsModal } from "@/components/SecurityEventsModal";
 import { DepartmentAnalyticsModal } from "@/components/departments/DepartmentAnalyticsModal";
+import { DepartmentManageModal } from "@/components/departments/DepartmentManageModal";
+import { DepartmentDeleteModal } from "@/components/departments/DepartmentDeleteModal";
 import { PermissionMatrixModal } from "@/components/common/PermissionMatrixModal";
 
 interface StaffAccessManagementViewProps {
@@ -55,6 +60,45 @@ export function StaffAccessManagementView({
   const [activeViewMode, setActiveViewMode] = useState<"directory" | "departments">("directory");
   const [selectedAnalyticsDeptId, setSelectedAnalyticsDeptId] = useState<string | null>(null);
   const [permissionTargetUser, setPermissionTargetUser] = useState<StaffMember | null>(null);
+
+  // Department Management State
+  const [deptList, setDeptList] = useState<Department[]>(departments || []);
+  const [includeInactiveDepts, setIncludeInactiveDepts] = useState(false);
+  const [showDeptManageModal, setShowDeptManageModal] = useState(false);
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [deptToDelete, setDeptToDelete] = useState<Department | null>(null);
+  const [showDeptDeleteModal, setShowDeptDeleteModal] = useState(false);
+
+  useEffect(() => {
+    if (departments && departments.length > 0) {
+      setDeptList(departments);
+    }
+  }, [departments]);
+
+  const loadDepartments = async () => {
+    try {
+      const res = await api.getDepartments(includeInactiveDepts);
+      if (Array.isArray(res)) {
+        setDeptList(res);
+      }
+    } catch (err) {
+      console.error("Failed to load departments:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadDepartments();
+  }, [includeInactiveDepts]);
+
+  const handleToggleDeptStatus = async (dept: Department, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.toggleDepartmentStatus(dept.id, !dept.is_active);
+      await loadDepartments();
+    } catch (err: any) {
+      alert(err?.message || "Failed to toggle department status");
+    }
+  };
 
   // Directory State
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -491,7 +535,7 @@ export function StaffAccessManagementView({
           }`}
         >
           <Building2 className="h-4.5 w-4.5" />
-          <span>Hospital Service Departments ({departments.length})</span>
+          <span>Hospital Service Departments ({deptList.length})</span>
         </button>
       </div>
 
@@ -610,11 +654,17 @@ export function StaffAccessManagementView({
                         {/* Member Identity */}
                         <td className="py-4.5 px-5">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={staff.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
-                              alt={staff.name}
-                              className="h-10 w-10 rounded-xl object-cover border-2 border-[#CBD5E1]"
-                            />
+                            <div className="h-10 w-10 rounded-xl bg-[#F1F5F9] text-[#334155] border-2 border-[#CBD5E1] flex items-center justify-center font-black text-sm shadow-sm">
+                              {staff.name
+                                ? staff.name
+                                    .split(" ")
+                                    .filter(Boolean)
+                                    .map((n: string) => n[0])
+                                    .slice(0, 2)
+                                    .join("")
+                                    .toUpperCase()
+                                : "ST"}
+                            </div>
                             <div>
                               <div className="font-black text-base text-[#0F172A]">{staff.name}</div>
                               <div className="text-xs text-[#64748B] font-semibold">{staff.email}</div>
@@ -785,43 +835,145 @@ export function StaffAccessManagementView({
         </div>
       )}
 
-      {/* 5. MODE B: 6 HOSPITAL DEPARTMENT CARDS (KEPT INTACT AS SPECIFIED) */}
+      {/* 5. MODE B: HOSPITAL DEPARTMENT MANAGEMENT & CARDS */}
       {activeViewMode === "departments" && (
         <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-[#17212F]">Hospital Departments & Staff Roster</h2>
-            <p className="text-xs text-[#667085] mt-0.5">
-              6 configurable hospital service departments and assigned supervisory personnel
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-[#17212F]">Hospital Departments & Staff Roster</h2>
+              <p className="text-xs text-[#667085] mt-0.5">
+                {deptList.length} configurable hospital service departments and assigned supervisory personnel
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Toggle Inactive Checkbox */}
+              <label className="flex items-center gap-2 text-xs font-bold text-[#475569] cursor-pointer bg-white px-3 py-2 rounded-xl border border-[#CBD5E1] shadow-2xs hover:bg-[#F8FAFC]">
+                <input
+                  type="checkbox"
+                  checked={includeInactiveDepts}
+                  onChange={(e) => setIncludeInactiveDepts(e.target.checked)}
+                  className="rounded border-[#CBD5E1] text-[#176B63] focus:ring-[#176B63] cursor-pointer"
+                />
+                <span>Show Inactive Departments</span>
+              </label>
+
+              {/* Add Department Button (Admins only) */}
+              {(currentUser?.role === "admin" || currentUser?.role === "superadmin") && (
+                <button
+                  onClick={() => {
+                    setEditingDept(null);
+                    setShowDeptManageModal(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-[#176B63] hover:bg-[#12534C] text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>+ Add Department</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {departments.map((dept) => (
+            {deptList.map((dept) => (
               <div
                 key={dept.id}
                 onClick={() => setSelectedAnalyticsDeptId(dept.id)}
-                className="bg-white p-6 rounded-3xl border-2 border-[#CBD5E1] shadow-sm space-y-4 hover:border-[#3868C9] hover:shadow-md transition-all cursor-pointer group"
+                className={`bg-white p-6 rounded-3xl border-2 shadow-sm space-y-4 hover:border-[#3868C9] hover:shadow-md transition-all cursor-pointer group relative ${
+                  dept.is_active ? "border-[#CBD5E1]" : "border-slate-200 opacity-75 bg-slate-50/50"
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] group-hover:bg-[#EEF4FD] group-hover:border-[#BFDBFE] transition">
                       {getDepartmentIcon(dept.icon)}
                     </div>
-                    <span className="font-black text-base text-[#0F172A] group-hover:text-[#3868C9] transition">{dept.name}</span>
+                    <div>
+                      <span className="font-black text-base text-[#0F172A] group-hover:text-[#3868C9] transition block">
+                        {dept.name}
+                      </span>
+                      <span className="font-mono text-[11px] font-black text-[#176B63] bg-[#E8F3F1] px-2 py-0.5 rounded border border-[#99F6E4]">
+                        {dept.code}
+                      </span>
+                    </div>
                   </div>
-                  <span className="font-mono text-xs font-black text-[#176B63] bg-[#E8F3F1] px-2.5 py-1 rounded-lg border border-[#99F6E4]">
-                    {dept.code}
+
+                  {/* Status Badge */}
+                  <span
+                    className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                      dept.is_active
+                        ? "bg-[#EDF7F2] text-[#16805D] border-[#A6E1CE]"
+                        : "bg-slate-100 text-slate-500 border-slate-300"
+                    }`}
+                  >
+                    {dept.is_active ? "Active" : "Inactive"}
                   </span>
                 </div>
 
-                <p className="text-xs text-[#475569] font-medium leading-relaxed">
-                  {dept.description}
+                <p className="text-xs text-[#475569] font-medium leading-relaxed min-h-[32px]">
+                  {dept.description || "Hospital service department"}
                 </p>
 
-                <div className="pt-4 border-t-2 border-[#F1F5F9] flex justify-between text-xs font-bold text-[#475569]">
-                  <span>Active Tickets: <strong className="text-[#0F172A] text-sm">{dept.active_ticket_count || 0}</strong></span>
-                  <span>Eligible Personnel: <strong className="text-[#176B63] text-sm">{dept.staff_count || 0}</strong></span>
+                <div className="pt-3 border-t-2 border-[#F1F5F9] flex justify-between text-xs font-bold text-[#475569]">
+                  <span>
+                    Active Tickets: <strong className="text-[#0F172A] text-sm">{dept.active_ticket_count || 0}</strong>
+                  </span>
+                  <span>
+                    Eligible Personnel: <strong className="text-[#176B63] text-sm">{dept.staff_count || 0}</strong>
+                  </span>
                 </div>
+
+                {/* Administrative Controls */}
+                {(currentUser?.role === "admin" || currentUser?.role === "superadmin") && (
+                  <div
+                    className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-1">
+                      {/* Edit Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingDept(dept);
+                          setShowDeptManageModal(true);
+                        }}
+                        className="p-1.5 rounded-lg border border-[#CBD5E1] text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] text-xs font-bold flex items-center gap-1 cursor-pointer"
+                        title="Edit Department Name, Code, Scope"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span>Edit</span>
+                      </button>
+
+                      {/* Status Toggle Button */}
+                      <button
+                        onClick={(e) => handleToggleDeptStatus(dept, e)}
+                        className={`px-2 py-1 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition ${
+                          dept.is_active
+                            ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                        }`}
+                        title={dept.is_active ? "Deactivate Department" : "Reactivate Department"}
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                        <span>{dept.is_active ? "Deactivate" : "Activate"}</span>
+                      </button>
+                    </div>
+
+                    {/* Safe Delete Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeptToDelete(dept);
+                        setShowDeptDeleteModal(true);
+                      }}
+                      className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                      title="Safely Remove Department with Dependency Check"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                )}
 
                 <div className="pt-1 flex items-center justify-end text-[11px] font-bold text-[#3868C9] group-hover:underline">
                   <span>View Live Performance Telemetry →</span>
@@ -847,11 +999,12 @@ export function StaffAccessManagementView({
 
       {/* Create Staff Modal */}
       <CreateStaffModal
-        departments={departments}
+        departments={deptList}
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSuccess={() => {
           loadStaffDirectory();
+          loadDepartments();
           setActionSuccessMessage("New hospital staff account created successfully.");
           setTimeout(() => setActionSuccessMessage(null), 4000);
         }}
@@ -1057,6 +1210,33 @@ export function StaffAccessManagementView({
           onSaved={loadStaffDirectory}
         />
       )}
+
+      {/* Department Add/Edit Modal */}
+      <DepartmentManageModal
+        isOpen={showDeptManageModal}
+        onClose={() => {
+          setShowDeptManageModal(false);
+          setEditingDept(null);
+        }}
+        onSuccess={() => {
+          loadDepartments();
+        }}
+        department={editingDept}
+      />
+
+      {/* Department Safe Deletion & Dependency Modal */}
+      <DepartmentDeleteModal
+        isOpen={showDeptDeleteModal}
+        onClose={() => {
+          setShowDeptDeleteModal(false);
+          setDeptToDelete(null);
+        }}
+        onSuccess={() => {
+          loadDepartments();
+        }}
+        department={deptToDelete}
+        allDepartments={deptList}
+      />
     </div>
   );
 }

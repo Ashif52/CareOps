@@ -3,11 +3,24 @@ import random
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.database import get_db
 from app.models import User, AuditLog, Department
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
-from app.services.auth_service import verify_password, get_password_hash, create_access_token, get_current_user
+from app.services.auth_service import (
+    verify_password, get_password_hash, create_access_token,
+    get_current_user, needs_rehash
+)
 from app.services.rbac_service import get_user_permissions
+
+from sqlalchemy import func, or_
+import secrets
+from datetime import timedelta
+from app.schemas import (
+    LoginRequest, RegisterRequest, TokenResponse, UserResponse,
+    ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordWithTokenRequest
+)
+from app.services.email_service import EmailService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -16,15 +29,42 @@ def utc_now():
 
 @router.post("/login", response_model=TokenResponse)
 def login(creds: LoginRequest, db: Session = Depends(get_db)):
-    email_clean = creds.email.lower().strip()
-    user = db.query(User).filter(User.email == email_clean).first()
+    raw_id = (creds.login_identifier or creds.email or "").strip()
+    if not raw_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Login identifier (email, staff ID, or patient ID) is required."
+        )
+
+    # Centralized identity lookup: authoritative database check across email, staff ID, patient ID, and phone
+    id_lower = raw_id.lower()
+    user = db.query(User).filter(
+        or_(
+            func.lower(User.email) == id_lower,
+            func.lower(User.employee_id) == id_lower,
+            func.lower(User.patient_id) == id_lower,
+            User.phone == raw_id
+        )
+    ).first()
     
     # Generic rejection for unknown user to prevent enumeration
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid credentials. Please verify your login identifier and password.",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Portal isolation check
+    if creds.portal_hint == "admin" and user.role not in ["admin", "superadmin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted: This portal is for Hospital Administrators only. Please log in through the Staff Portal or Patient Portal."
+        )
+    if creds.portal_hint == "staff" and user.role == "patient":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted: This portal is for Hospital Staff members only. Please log in through the Patient Portal."
         )
     
     # 1. Check if account is locked
@@ -103,17 +143,26 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
             
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid email or password. Attempt {failures} of 3 before account lockout.",
+                detail="Invalid email or password.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
             
     # 4. Authentication Succeeded!
+    # Transparent upgrade to bcrypt if legacy SHA-256 hash
+    if needs_rehash(user.hashed_password):
+        user.hashed_password = get_password_hash(creds.password)
+
     # Reset failure counter and update last login
     user.failed_login_attempts = 0
     user.last_login_at = utc_now()
     db.commit()
     
-    token = create_access_token(data={"sub": str(user.id), "role": user.role, "dept": user.department_id})
+    token = create_access_token(data={
+        "sub": str(user.id),
+        "role": user.role,
+        "dept": user.department_id,
+        "v": getattr(user, "token_version", 1)
+    })
     user_perms = get_user_permissions(user)
     
     user_dict = {
@@ -123,9 +172,11 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
         "role": user.role,
         "department_id": user.department_id,
         "phone": user.phone,
-        "avatar_url": user.avatar_url,
+        "avatar_url": None,
         "is_active": user.is_active,
         "employee_id": user.employee_id,
+        "patient_id": getattr(user, "patient_id", None),
+        "token_version": getattr(user, "token_version", 1),
         "designation": user.designation,
         "account_status": user.account_status,
         "failed_login_attempts": user.failed_login_attempts,
@@ -150,10 +201,15 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A valid email address is required."
         )
-    if not payload.password or len(payload.password) < 4:
+    if not payload.password or len(payload.password) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 4 characters long."
+            detail="Password must be at least 8 characters long."
+        )
+    if not any(c.isupper() for c in payload.password) or not any(c.islower() for c in payload.password) or not any(c.isdigit() for c in payload.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain at least one uppercase letter, one lowercase letter, and one digit."
         )
 
     # Check if user already exists
@@ -177,25 +233,40 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     while db.query(User).filter(User.employee_id == emp_id).first():
         emp_id = f"EMP-{emp_prefix}-{random.randint(1000, 9999)}"
 
-    valid_roles = ["admin", "superadmin", "supervisor", "staff", "doctor", "nurse", "it_admin", "billing", "pharmacy", "housekeeping", "auditor"]
-    chosen_role = payload.role.lower().strip() if payload.role else "admin"
+    valid_roles = ["patient", "supervisor", "staff", "doctor", "nurse", "it_admin", "billing", "pharmacy", "housekeeping", "auditor"]
+    chosen_role = payload.role.lower().strip() if payload.role else "patient"
     if chosen_role not in valid_roles:
-        chosen_role = "admin"
+        chosen_role = "staff"
+
+    # Security rule: Public self-registration can never claim admin or superadmin privileges
+    if chosen_role in ["admin", "superadmin", "super_admin"]:
+        chosen_role = "staff"
 
     pw_hash = get_password_hash(payload.password)
+    
+    pat_id = None
+    if chosen_role == "patient":
+        dept_id = None
+        emp_id = None
+        pat_id = f"PAT-{random.randint(10000, 99999)}"
+        default_designation = "Hospital Patient"
+    else:
+        default_designation = "Hospital Personnel"
+
     new_user = User(
         name=payload.name.strip() if payload.name else "Hospital User",
         email=clean_email,
         employee_id=emp_id,
+        patient_id=pat_id,
         hashed_password=pw_hash,
         role=chosen_role,
         department_id=dept_id,
-        designation=payload.designation.strip() if payload.designation else "Hospital Operations Lead",
+        designation=payload.designation.strip() if payload.designation else default_designation,
         phone=payload.phone.strip() if payload.phone else None,
         account_status="active",
         is_active=True,
         failed_login_attempts=0,
-        avatar_url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+        avatar_url=None
     )
     db.add(new_user)
     db.flush()
@@ -226,7 +297,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         "role": new_user.role,
         "department_id": new_user.department_id,
         "phone": new_user.phone,
-        "avatar_url": new_user.avatar_url,
+        "avatar_url": None,
         "is_active": new_user.is_active,
         "employee_id": new_user.employee_id,
         "designation": new_user.designation,
@@ -255,9 +326,11 @@ def get_me(current_user: User = Depends(get_current_user)):
         "role": current_user.role,
         "department_id": current_user.department_id,
         "phone": current_user.phone,
-        "avatar_url": current_user.avatar_url,
+        "avatar_url": None,
         "is_active": current_user.is_active,
         "employee_id": current_user.employee_id,
+        "patient_id": getattr(current_user, "patient_id", None),
+        "token_version": getattr(current_user, "token_version", 1),
         "designation": current_user.designation,
         "account_status": current_user.account_status,
         "failed_login_attempts": current_user.failed_login_attempts,
@@ -268,9 +341,140 @@ def get_me(current_user: User = Depends(get_current_user)):
         "permissions": user_perms
     }
 
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Allows authenticated user (Admin, Staff, or Patient) to securely change their password."""
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password verification failed. Please verify your existing password."
+        )
+
+    if not payload.new_password or len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters long."
+        )
+
+    # Hash new password with bcrypt
+    current_user.hashed_password = get_password_hash(payload.new_password)
+    # Increment token_version to invalidate any other existing sessions across devices
+    current_user.token_version = getattr(current_user, "token_version", 1) + 1
+    current_user.must_change_password = False
+
+    audit = AuditLog(
+        action="USER_PASSWORD_CHANGED",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        actor_role=current_user.role,
+        details=json.dumps({"user_id": current_user.id, "email": current_user.email})
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Password updated successfully. Other active sessions have been revoked."
+    }
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Generates secure reset token and sends email instructions."""
+    raw_id = payload.identifier.strip().lower()
+    user = db.query(User).filter(
+        or_(
+            func.lower(User.email) == raw_id,
+            func.lower(User.employee_id) == raw_id,
+            func.lower(User.patient_id) == raw_id
+        )
+    ).first()
+
+    # Always return success message to prevent user enumeration
+    if not user or not user.is_active or not user.email:
+        return {
+            "success": True,
+            "message": "If an active account matches the provided identifier, password reset instructions have been dispatched to the registered email address."
+        }
+
+    reset_token = secrets.token_urlsafe(32)
+    user.password_reset_token = reset_token
+    user.password_reset_expires_at = utc_now() + timedelta(minutes=60)
+    db.commit()
+
+    frontend_base = (getattr(settings, "FRONTEND_URL", "") or "http://localhost:3000").rstrip("/")
+    reset_url = f"{frontend_base}/reset-password?token={reset_token}"
+
+    try:
+        EmailService.send_password_reset_email(db, user, reset_url)
+    except Exception as e:
+        logger.error(f"Error dispatching password reset email: {e}")
+
+    return {
+        "success": True,
+        "message": "If an active account matches the provided identifier, password reset instructions have been dispatched to the registered email address."
+    }
+
+@router.post("/reset-password-with-token")
+def reset_password_with_token(
+    payload: ResetPasswordWithTokenRequest,
+    db: Session = Depends(get_db)
+):
+    """Validates single-use reset token and assigns new password."""
+    if not payload.token or not payload.new_password:
+        raise HTTPException(status_code=400, detail="Reset token and new password are required.")
+
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
+    user = db.query(User).filter(
+        User.password_reset_token == payload.token,
+        User.password_reset_expires_at > utc_now()
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password reset link is invalid or has expired. Please request a new link."
+        )
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    user.token_version = getattr(user, "token_version", 1) + 1
+    user.failed_login_attempts = 0
+    if user.account_status == "locked":
+        user.account_status = "active"
+
+    audit = AuditLog(
+        action="PASSWORD_RESET_TOKEN_EXECUTED",
+        actor_id=user.id,
+        actor_name=user.name,
+        actor_role=user.role,
+        details=json.dumps({"email": user.email})
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Your password has been reset successfully. You may now log in with your new password."
+    }
+
 @router.get("/demo-users")
 def get_demo_users(db: Session = Depends(get_db)):
-    """Returns quick login credentials for demonstration and role workspace testing"""
+    """Returns quick login credentials for demonstration - ONLY accessible in DEBUG_MODE"""
+    if not settings.DEBUG_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo users endpoint is disabled in production mode."
+        )
     users = db.query(User).filter(User.is_active == True).all()
     return [
         {

@@ -14,6 +14,7 @@ from app.models import (
 )
 from app.services.sla_engine import SLAEngine
 from app.services.whatsapp_service import WhatsAppService
+from app.services.email_service import EmailService
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -72,9 +73,11 @@ class TicketService:
         voice_url: Optional[str] = None,
         voice_transcription: Optional[str] = None,
         patient_contact: Optional[str] = None,
-        photo_url: Optional[str] = None
+        photo_url: Optional[str] = None,
+        patient_user_id: Optional[int] = None,
+        patient_email: Optional[str] = None
     ) -> Ticket:
-        """Creates a ticket submitted by a patient from a room QR code with tracking token and WhatsApp notification"""
+        """Creates a ticket submitted by a patient from a room QR code with tracking token, email and WhatsApp notifications"""
         priority = "high" if department.id in ["medical", "doctors", "nursing"] else "medium"
         ack_dl, res_dl = SLAEngine.calculate_deadlines(db, department.id, priority)
         
@@ -101,7 +104,9 @@ class TicketService:
             assigned_at=utc_now() if assigned_staff else None,
             sla_acknowledgement_deadline=ack_dl,
             sla_resolution_deadline=res_dl,
+            patient_user_id=patient_user_id,
             patient_contact=patient_contact,
+            patient_email=patient_email,
             patient_tracking_token=tracking_token,
             is_demo=getattr(room, "is_demo", False)
         )
@@ -124,7 +129,7 @@ class TicketService:
         # Initial patient-visible progress note
         welcome_note = TicketNote(
             ticket_id=ticket.id,
-            author_name="CareOps System",
+            author_name="Happy Care System",
             content=f"Request registered for {department.name}. Assigned to care team.",
             is_internal=False
         )
@@ -153,6 +158,12 @@ class TicketService:
             WhatsAppService.on_complaint_created(db, ticket, tracking_url)
             if assigned_staff:
                 WhatsAppService.on_ticket_assigned(db, ticket, assigned_staff)
+        except Exception:
+            pass
+
+        # Trigger Outbound Healthcare Email Dispatch (Patient confirmation, Staff assignment, Admin alert)
+        try:
+            EmailService.on_ticket_created(db, ticket)
         except Exception:
             pass
 
@@ -214,6 +225,12 @@ class TicketService:
         except Exception:
             pass
 
+        # Email Notification: Patient & Staff
+        try:
+            EmailService.on_ticket_status_updated(db, ticket, "acknowledged", user.name, note)
+        except Exception:
+            pass
+
         return ticket
 
     @staticmethod
@@ -254,6 +271,12 @@ class TicketService:
         tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_work_started(db, ticket, tracking_url)
+        except Exception:
+            pass
+
+        # Email Notification: Patient
+        try:
+            EmailService.on_ticket_status_updated(db, ticket, "in_progress", user.name, note)
         except Exception:
             pass
 
@@ -312,6 +335,12 @@ class TicketService:
         except Exception:
             pass
 
+        # Email Notification: Patient & Supervisor
+        try:
+            EmailService.on_ticket_status_updated(db, ticket, "resolution_submitted", user.name, summary)
+        except Exception:
+            pass
+
         return ticket
 
     @staticmethod
@@ -349,6 +378,12 @@ class TicketService:
         tracking_url = get_full_tracking_url(ticket)
         try:
             WhatsAppService.on_work_completed(db, ticket, tracking_url)
+        except Exception:
+            pass
+
+        # Email Notification: Patient closed
+        try:
+            EmailService.on_ticket_status_updated(db, ticket, "closed", user.name, approval_note)
         except Exception:
             pass
 
