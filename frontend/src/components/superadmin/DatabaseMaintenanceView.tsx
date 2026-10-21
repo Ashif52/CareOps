@@ -47,6 +47,9 @@ export function DatabaseMaintenanceView({ onPurgeSuccess }: DatabaseMaintenanceV
   const [isExecuting, setIsExecuting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [typedPhrase, setTypedPhrase] = useState("");
+  const [showCleanAllModal, setShowCleanAllModal] = useState(false);
+  const [cleanAllPhrase, setCleanAllPhrase] = useState("");
+  const [isCleaningAll, setIsCleaningAll] = useState(false);
   const [executionResult, setExecutionResult] = useState<{
     success: boolean;
     message: string;
@@ -146,6 +149,29 @@ export function DatabaseMaintenanceView({ onPurgeSuccess }: DatabaseMaintenanceV
     }
   };
 
+  const handleExecuteCleanAll = async () => {
+    if (cleanAllPhrase !== "CONFIRM_CLEAR") return;
+    setIsCleaningAll(true);
+    try {
+      const res: any = await api.cleanFreshStart(cleanAllPhrase);
+      setExecutionResult({
+        success: true,
+        message: res.message || "All transactional entries successfully purged. System is completely fresh!",
+        total_purged: 0,
+      });
+      setShowCleanAllModal(false);
+      setCleanAllPhrase("");
+      setPreviewData(null);
+      setSelectedKeys([]);
+      await loadCountsAndAudit();
+      onPurgeSuccess?.();
+    } catch (err: any) {
+      alert(`Clean Slate execution error: ${err.message || err}`);
+    } finally {
+      setIsCleaningAll(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -169,14 +195,27 @@ export function DatabaseMaintenanceView({ onPurgeSuccess }: DatabaseMaintenanceV
           </div>
         </div>
 
-        <button
-          onClick={loadCountsAndAudit}
-          disabled={isLoadingAudit}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#F7F8FA] hover:bg-[#EEF0F4] border border-[#E5E9EF] rounded-lg text-xs font-semibold text-[#344054] transition cursor-pointer"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoadingAudit ? "animate-spin" : ""}`} />
-          <span>Refresh Database Counts</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => {
+              setCleanAllPhrase("");
+              setShowCleanAllModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5] text-[#DC2626] rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Start Fresh (Clean All)</span>
+          </button>
+
+          <button
+            onClick={loadCountsAndAudit}
+            disabled={isLoadingAudit}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#F7F8FA] hover:bg-[#EEF0F4] border border-[#E5E9EF] rounded-lg text-xs font-semibold text-[#344054] transition cursor-pointer"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoadingAudit ? "animate-spin" : ""}`} />
+            <span>Refresh Counts</span>
+          </button>
+        </div>
       </div>
 
       {/* Safety Notice Banner */}
@@ -461,6 +500,71 @@ export function DatabaseMaintenanceView({ onPurgeSuccess }: DatabaseMaintenanceV
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>{isExecuting ? "Executing Purge..." : "Execute Destructive Purge"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Reset & Fresh Start Modal */}
+      {showCleanAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 border border-[#E5E9EF] shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-[#DC2626]">
+              <div className="p-3 bg-[#FEE2E2] rounded-xl">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-[#17212F]">Clean All Entries & Start Fresh</h3>
+                <p className="text-xs text-[#667085]">Pristine Database Slate for Real-World Testing</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-[#FEF2F2] rounded-xl border border-[#FCA5A5] text-xs text-[#7F1D1D] space-y-2">
+              <p className="font-bold">What will be purged (Clean Slate):</p>
+              <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                <li>All tickets, complaints, and status workflows</li>
+                <li>All uploaded before-and-after photos and video files</li>
+                <li>All AI multimodal verification records and review logs</li>
+                <li>All internal notes, patient tracking tokens, and feedback</li>
+                <li>All email logs and WhatsApp delivery logs</li>
+                <li>All external Google reviews, alerts, and corrective actions</li>
+              </ul>
+              <div className="pt-2 border-t border-[#FCA5A5]/40 font-semibold text-[#16805D]">
+                Preserved: All 11 Departments, Hospital Rooms & Bedside QR Tokens, User Accounts & Passwords, SLA Policies, and System API Credentials.
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#17212F] block">
+                Type <span className="font-mono text-[#DC2626] font-bold bg-[#FEE2E2] px-1.5 py-0.5 rounded">CONFIRM_CLEAR</span> below to execute fresh start:
+              </label>
+              <input
+                type="text"
+                value={cleanAllPhrase}
+                onChange={(e) => setCleanAllPhrase(e.target.value)}
+                placeholder="CONFIRM_CLEAR"
+                className="w-full px-3 py-2 text-xs font-mono border border-[#D0D5DD] rounded-lg focus:outline-hidden focus:border-[#DC2626] focus:ring-1 focus:ring-[#DC2626]"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5E9EF]">
+              <button
+                type="button"
+                onClick={() => setShowCleanAllModal(false)}
+                className="px-4 py-2 border border-[#E5E9EF] hover:bg-[#F7F8FA] rounded-lg text-xs font-semibold text-[#344054] transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteCleanAll}
+                disabled={cleanAllPhrase !== "CONFIRM_CLEAR" || isCleaningAll}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-lg text-xs font-bold transition cursor-pointer disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>{isCleaningAll ? "Purging All Records..." : "Start Completely Fresh"}</span>
               </button>
             </div>
           </div>

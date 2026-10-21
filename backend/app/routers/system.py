@@ -317,6 +317,83 @@ def clear_or_reset_database(
         "message": "Database reset completed successfully and demo records restored."
     }
 
+@router.post("/clean-fresh-start")
+def clean_fresh_start_endpoint(
+    payload: ClearDatabaseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("superadmin"))
+):
+    """
+    SUPERADMIN-ONLY:
+    Completely purges all transactional entries (all tickets, evidence, AI jobs,
+    NPS ratings, emails, and WhatsApp logs) while strictly retaining core configuration
+    (Users, Departments, Rooms, SLA rules, Security Settings, and Resend credentials).
+    Requires 'CONFIRM_CLEAR' confirmation phrase.
+    """
+    if payload.confirm_phrase not in ("CONFIRM_CLEAR", "CONFIRM_RESET_ALL"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation phrase mismatch. You must explicitly type 'CONFIRM_CLEAR' to confirm this operation."
+        )
+
+    try:
+        from app.models import (
+            ReviewChatMessage, ReviewCorrectiveAction, ReviewAIAnalysis, ReviewAlert,
+            GoogleReview, NPSResponse, WhatsAppMessage, EmailLog, EscalationLog,
+            AIVerificationJob, TicketNote, Evidence, MaintenanceAuditLog, AuditLog, Ticket, Room
+        )
+        
+        # Google Reviews cascade
+        db.query(ReviewChatMessage).delete(synchronize_session=False)
+        db.query(ReviewCorrectiveAction).delete(synchronize_session=False)
+        db.query(ReviewAIAnalysis).delete(synchronize_session=False)
+        db.query(ReviewAlert).delete(synchronize_session=False)
+        db.query(GoogleReview).delete(synchronize_session=False)
+        
+        # NPS & Communications
+        db.query(NPSResponse).delete(synchronize_session=False)
+        db.query(WhatsAppMessage).delete(synchronize_session=False)
+        db.query(EmailLog).delete(synchronize_session=False)
+        db.query(EscalationLog).delete(synchronize_session=False)
+        
+        # AI Verifications & Tickets
+        db.query(AIVerificationJob).delete(synchronize_session=False)
+        db.query(TicketNote).delete(synchronize_session=False)
+        db.query(Evidence).delete(synchronize_session=False)
+        
+        # Audit logs referencing tickets
+        db.query(MaintenanceAuditLog).delete(synchronize_session=False)
+        db.query(AuditLog).delete(synchronize_session=False)
+        
+        # Tickets
+        db.query(Ticket).delete(synchronize_session=False)
+        db.query(Room).update({"is_demo": False})
+        db.commit()
+
+        # Add single audit record for the fresh start
+        audit = AuditLog(
+            action="SUPERADMIN_FRESH_START_CLEAN",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            actor_role="superadmin",
+            details=json.dumps({"executed_by": current_user.email, "status": "pristine_fresh_slate"})
+        )
+        db.add(audit)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "All transactional entries successfully purged. System is 100% fresh for clean operational testing."
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Clean fresh start failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear database: {str(e)}"
+        )
+
+
 
 
 # ==============================================================================

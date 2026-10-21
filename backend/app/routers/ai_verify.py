@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 import json
 from typing import List, Optional
@@ -67,9 +68,9 @@ def get_model_options(
     
     # Indicate whether API key is present without exposing the actual secret key
     has_keys = {
-        "openai": bool(sec and sec.openai_api_key),
-        "gemini": bool(sec and sec.gemini_api_key),
-        "anthropic": bool(sec and sec.anthropic_api_key),
+        "openai": bool((sec and sec.openai_api_key) or os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY),
+        "gemini": bool((sec and sec.gemini_api_key) or os.getenv("GEMINI_API_KEY")),
+        "anthropic": bool((sec and sec.anthropic_api_key) or os.getenv("ANTHROPIC_API_KEY")),
         "mock": True
     }
 
@@ -177,13 +178,12 @@ def trigger_analysis(
     model_name = (payload and payload.model_name) or (sec.ai_vision_model if sec else "careops-vision-default")
 
     api_key = None
-    if sec:
-        if provider == "openai":
-            api_key = sec.openai_api_key
-        elif provider == "gemini":
-            api_key = sec.gemini_api_key
-        elif provider == "anthropic":
-            api_key = sec.anthropic_api_key
+    if provider == "openai":
+        api_key = (sec and sec.openai_api_key) or os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
+    elif provider == "gemini":
+        api_key = (sec and sec.gemini_api_key) or os.getenv("GEMINI_API_KEY")
+    elif provider == "anthropic":
+        api_key = (sec and sec.anthropic_api_key) or os.getenv("ANTHROPIC_API_KEY")
     
     analysis_data = AIVisionService.analyze_ticket_evidence(
         ticket=ticket,

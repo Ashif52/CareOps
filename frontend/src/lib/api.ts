@@ -988,6 +988,8 @@ export const api = {
     fetchWithAuth("/system/maintenance/preview", { method: "POST", body: JSON.stringify({ categories }) }),
   executeMaintenancePurge: (categories: string[], confirmPhrase: string) =>
     fetchWithAuth("/system/maintenance/purge", { method: "POST", body: JSON.stringify({ categories, confirm_phrase: confirmPhrase }) }),
+  cleanFreshStart: (confirmPhrase: string) =>
+    fetchWithAuth("/system/clean-fresh-start", { method: "POST", body: JSON.stringify({ mode: "clean_slate", confirm_phrase: confirmPhrase }) }),
   getMaintenanceAuditLogs: () =>
     fetchWithAuth("/system/maintenance/audit-logs"),
   getAdminsList: () =>
