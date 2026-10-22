@@ -128,6 +128,19 @@ export interface User {
   created_at: string;
 }
 
+export interface SimulationAccount {
+  id?: number;
+  name: string;
+  email: string;
+  role: string;
+  badge?: string;
+  employee_id?: string | null;
+  department_id?: string | null;
+  department_name?: string | null;
+  designation?: string | null;
+  desc: string;
+}
+
 export interface EmailLog {
   id: number;
   ticket_id?: number | null;
@@ -238,6 +251,9 @@ export interface Department {
   description?: string;
   icon: string;
   supervisor_id?: number | null;
+  supervisor_ids?: number[];
+  supervisors?: Array<{ id: number; name: string; email: string }>;
+  categories?: string[];
   is_active: boolean;
   active_ticket_count?: number;
   staff_count?: number;
@@ -384,14 +400,107 @@ export interface EscalationLog {
   created_at: string;
 }
 
+export interface NotificationItem {
+  id: number;
+  recipient_id: number;
+  department_id?: string | null;
+  event_type: string;
+  title: string;
+  message: string;
+  ticket_id?: number | null;
+  ticket_number?: string | null;
+  destination_link?: string | null;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  total: number;
+  unread_count: number;
+  items: NotificationItem[];
+}
+
 export interface DashboardMetrics {
   kpis: {
     total_open_tickets: number;
-    tickets_due_soon: number;
+    unacknowledged_tickets?: number;
+    in_progress_tickets?: number;
     overdue_tickets: number;
+    awaiting_verification?: number;
+    completed_tickets?: number;
+    tickets_due_soon: number;
     sla_compliance_rate: number;
     avg_resolution_time_minutes: number;
     pending_ai_verifications: number;
+    comparisons?: {
+      created_delta_pct?: number | null;
+      completed_delta_pct?: number | null;
+    };
+  };
+  charts?: {
+    volume_over_time: Array<{
+      bucket_index: number;
+      label: string;
+      date: string;
+      created: number;
+      resolved: number;
+      total_volume: number;
+    }>;
+    tickets_by_department: Array<{
+      department_id: string;
+      department_name: string;
+      code: string;
+      open: number;
+      in_progress: number;
+      overdue: number;
+      completed: number;
+      total: number;
+    }>;
+    status_distribution: Array<{
+      status: string;
+      label: string;
+      count: number;
+      percentage: number;
+      color: string;
+    }>;
+    sla_performance: {
+      compliant_count: number;
+      breached_count: number;
+      compliance_rate: number;
+      by_priority: Array<{
+        priority: string;
+        total: number;
+        compliant: number;
+        breached: number;
+        compliance_rate: number;
+      }>;
+    };
+    avg_resolution_time_by_department: Array<{
+      department_id: string;
+      department_name: string;
+      avg_resolution_minutes: number;
+    }>;
+    workload_distribution: {
+      assigned_tickets: number;
+      unassigned_tickets: number;
+      staff_workload: Array<{
+        staff_id: number;
+        name: string;
+        email: string;
+        department_id: string;
+        active_tasks: number;
+        completed_tasks: number;
+      }>;
+    };
+    ticket_trends: Array<{
+      bucket_index: number;
+      label: string;
+      date: string;
+      created: number;
+      resolved: number;
+      total_volume: number;
+    }>;
   };
   department_workload: Array<{ department_id: string; department_name: string; code: string; count: number }>;
   sla_by_department: Array<{ department_id: string; department_name: string; compliance_rate: number }>;
@@ -407,6 +516,15 @@ export interface DashboardMetrics {
     minutes_overdue: number;
     sla_resolution_deadline?: string | null;
   }>;
+  system_health?: {
+    status: string;
+    total_active_staff: number;
+    total_departments: number;
+    ai_queue_length: number;
+    server_time_utc: string;
+  };
+  scoped_department?: string | null;
+  timeframe?: string;
 }
 
 export interface AuditLog {
@@ -673,6 +791,7 @@ export const api = {
     fetchWithAuth("/auth/reset-password-with-token", { method: "POST", body: JSON.stringify(data) }),
   getMe: () => fetchWithAuth("/auth/me"),
   getDemoUsers: () => fetchWithAuth("/auth/demo-users"),
+  getSimulationAccounts: (): Promise<SimulationAccount[]> => fetchWithAuth("/auth/simulation-accounts"),
 
   // Dedicated Patient Portal Routes
   registerPatient: (data: {
@@ -737,6 +856,20 @@ export const api = {
     fetchWithAuth("/tickets", { method: "POST", body: JSON.stringify(data) }),
   acknowledgeTicket: (id: number, note?: string) =>
     fetchWithAuth(`/tickets/${id}/acknowledge`, { method: "POST", body: JSON.stringify({ note }) }),
+  assignTicket: (
+    id: number,
+    staffId: number,
+    expectedAssignedStaffId?: number | null,
+    note?: string
+  ) =>
+    fetchWithAuth(`/tickets/${id}/assign`, {
+      method: "POST",
+      body: JSON.stringify({
+        staff_id: staffId,
+        expected_assigned_staff_id: expectedAssignedStaffId,
+        note,
+      }),
+    }),
   startWork: (id: number, note?: string) =>
     fetchWithAuth(`/tickets/${id}/start-work`, { method: "POST", body: JSON.stringify({ note }) }),
   submitResolution: (id: number, data: { resolution_summary: string; parts_replaced?: string; functional_test_notes?: string }) =>
@@ -801,9 +934,32 @@ export const api = {
     fetchWithAuth("/sla/test-smtps", { method: "POST", body: JSON.stringify(data || {}) }),
 
   // Analytics & Audit
-  getDashboardMetrics: () => fetchWithAuth("/analytics/dashboard"),
+  getDashboardMetrics: (timeframe?: string, departmentId?: string) => {
+    const params = new URLSearchParams();
+    if (timeframe) params.append("timeframe", timeframe);
+    if (departmentId && departmentId !== "all") params.append("department_id", departmentId);
+    const qs = params.toString();
+    return fetchWithAuth(qs ? `/analytics/dashboard?${qs}` : "/analytics/dashboard");
+  },
   getAuditLogs: (ticketId?: number) =>
     fetchWithAuth(ticketId ? `/audit?ticket_id=${ticketId}` : "/audit"),
+
+  // In-App Role-Aware Notifications
+  getNotifications: (unreadOnly?: boolean, limit?: number, offset?: number) => {
+    const params = new URLSearchParams();
+    if (unreadOnly) params.append("unread_only", "true");
+    if (limit) params.append("limit", String(limit));
+    if (offset) params.append("offset", String(offset));
+    const qs = params.toString();
+    return fetchWithAuth(qs ? `/notifications?${qs}` : "/notifications");
+  },
+  getUnreadNotificationCount: () => fetchWithAuth("/notifications/unread-count"),
+  markNotificationRead: (id: number) =>
+    fetchWithAuth(`/notifications/${id}/mark-read`, { method: "POST" }),
+  markAllNotificationsRead: () =>
+    fetchWithAuth("/notifications/mark-all-read", { method: "POST" }),
+  deleteNotification: (id: number) =>
+    fetchWithAuth(`/notifications/${id}`, { method: "DELETE" }),
 
   // Enterprise Staff Directory & Access Management
   getStaffList: (params?: { search?: string; department_id?: string; role?: string; account_status?: string; page?: number; page_size?: number }) => {

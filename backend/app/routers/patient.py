@@ -1,8 +1,11 @@
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict
+
+EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
 from fastapi.responses import StreamingResponse
@@ -68,6 +71,23 @@ def get_room_by_token(qr_token: str, db: Session = Depends(get_db)):
         
     departments = db.query(Department).filter(Department.is_active == True).all()
     
+    depts_data = []
+    for d in departments:
+        cats = []
+        if d.categories:
+            try:
+                cats = json.loads(d.categories) if isinstance(d.categories, str) else d.categories
+            except Exception:
+                cats = [c.strip() for c in d.categories.split(",") if c.strip()]
+        depts_data.append({
+            "id": d.id,
+            "name": d.name,
+            "code": d.code,
+            "icon": d.icon,
+            "description": d.description,
+            "categories": cats
+        })
+
     return {
         "hospital_name": "Metropolitan General Hospital — CareOps Health",
         "room_number": room.room_number,
@@ -75,16 +95,7 @@ def get_room_by_token(qr_token: str, db: Session = Depends(get_db)):
         "wing": room.wing,
         "token": room.qr_token,
         "is_active": room.is_active,
-        "departments": [
-            {
-                "id": d.id,
-                "name": d.name,
-                "code": d.code,
-                "icon": d.icon,
-                "description": d.description
-            }
-            for d in departments
-        ]
+        "departments": depts_data
     }
 
 @router.post("/session/guest", response_model=PatientSessionResponse)
@@ -179,7 +190,16 @@ async def submit_patient_ticket(
     """
     # 0. Check authenticated patient identity if present
     patient_user_id = None
-    patient_email = payload.patient_email.strip().lower() if payload.patient_email else None
+    patient_email = None
+    if payload.patient_email:
+        clean_email = payload.patient_email.strip().lower()
+        if not EMAIL_REGEX.match(clean_email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please enter a valid email address (e.g. name@example.com)."
+            )
+        patient_email = clean_email
+
     if authorization and "bearer " in authorization.lower():
         token = authorization.split()[-1].strip()
         try:
@@ -230,7 +250,7 @@ async def submit_patient_ticket(
     voice_url = None
     if payload.voice_recording_base64:
         try:
-            voice_url, _, _ = StorageService.save_base64_data(
+            voice_url, _, _, _ = StorageService.save_base64_data(
                 payload.voice_recording_base64, 
                 subfolder="audio", 
                 default_ext=".webm"
@@ -241,13 +261,39 @@ async def submit_patient_ticket(
     photo_url = None
     if payload.photo_base64:
         try:
-            photo_url, _, _ = StorageService.save_base64_data(
+            photo_url, _, _, _ = StorageService.save_base64_data(
                 payload.photo_base64,
                 subfolder="evidence",
                 default_ext=".jpg"
             )
         except Exception:
             pass
+
+    saved_attachments = []
+    if payload.attachments:
+        for att in payload.attachments:
+            if not att.data_base64:
+                continue
+            try:
+                rel_url, f_hash, f_size, m_type = StorageService.save_base64_data(
+                    att.data_base64,
+                    subfolder="evidence",
+                    default_ext=".jpg" if (att.media_type or "").upper() == "PHOTO" else ".mp4"
+                )
+                saved_attachments.append({
+                    "file_url": rel_url,
+                    "file_name": att.file_name or ("photo.jpg" if m_type == "PHOTO" else "video.mp4"),
+                    "file_hash": f_hash,
+                    "file_size": f_size,
+                    "media_type": m_type or ("PHOTO" if (att.media_type or "").upper() == "PHOTO" else "VIDEO")
+                })
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Attachment validation failed: {str(e)}"
+                )
             
     ticket = TicketService.create_patient_ticket(
         db=db,
@@ -260,7 +306,8 @@ async def submit_patient_ticket(
         patient_contact=normalized_phone,
         photo_url=photo_url,
         patient_user_id=patient_user_id,
-        patient_email=patient_email
+        patient_email=patient_email,
+        attachments=saved_attachments
     )
 
     staff_name = ticket.assigned_staff.name if ticket.assigned_staff else None

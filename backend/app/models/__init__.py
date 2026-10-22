@@ -9,6 +9,13 @@ from app.database import Base
 def utc_now():
     return datetime.now(timezone.utc)
 
+class DepartmentSupervisor(Base):
+    __tablename__ = "department_supervisors"
+    
+    department_id = Column(String(50), ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    assigned_at = Column(DateTime(timezone=True), default=utc_now)
+
 class Department(Base):
     __tablename__ = "departments"
     
@@ -18,10 +25,12 @@ class Department(Base):
     description = Column(Text, nullable=True)
     icon = Column(String(50), default="Wrench")
     supervisor_id = Column(Integer, ForeignKey("users.id", name="fk_dept_supervisor"), nullable=True)
+    categories = Column(Text, nullable=True)  # JSON-encoded list of department-specific categories
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=utc_now)
     
     users = relationship("User", back_populates="department", foreign_keys="User.department_id")
+    supervisors = relationship("User", secondary="department_supervisors", backref="supervised_departments")
     tickets = relationship("Ticket", back_populates="department")
     sla_policies = relationship("SLAPolicy", back_populates="department")
 
@@ -590,4 +599,30 @@ class SystemSecuritySetting(Base):
     gemini_api_key = Column(Text, nullable=True)
     anthropic_api_key = Column(Text, nullable=True)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+# ==============================================================================
+# ROLE-BASED NOTIFICATIONS
+# ==============================================================================
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    department_id = Column(String(50), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True)
+    ticket_number = Column(String(50), nullable=True, index=True)
+    destination_link = Column(String(255), nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    dedup_key = Column(String(150), unique=True, index=True, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+
+    recipient = relationship("User", foreign_keys=[recipient_id], backref="notifications")
+    ticket = relationship("Ticket", foreign_keys=[ticket_id])
+    department = relationship("Department", foreign_keys=[department_id])
 

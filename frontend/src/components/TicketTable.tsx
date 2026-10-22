@@ -27,6 +27,7 @@ interface TicketTableProps {
   initialDeptFilter?: string;
   initialStatusFilter?: string;
   initialSlaFilter?: string;
+  initialDateFilter?: string;
 }
 
 export function TicketTable({
@@ -38,6 +39,7 @@ export function TicketTable({
   initialDeptFilter,
   initialStatusFilter,
   initialSlaFilter,
+  initialDateFilter,
 }: TicketTableProps) {
   const isStaff = currentUser?.role === "staff";
   const staffDept = currentUser?.department_id;
@@ -47,12 +49,14 @@ export function TicketTable({
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [slaFilter, setSlaFilter] = useState(initialSlaFilter || "all"); // "all", "overdue", "due_soon"
+  const [dateFilter, setDateFilter] = useState(initialDateFilter || "all");
 
   React.useEffect(() => {
     if (initialDeptFilter !== undefined) setDeptFilter(initialDeptFilter);
     if (initialStatusFilter !== undefined) setStatusFilter(initialStatusFilter);
     if (initialSlaFilter !== undefined) setSlaFilter(initialSlaFilter);
-  }, [initialDeptFilter, initialStatusFilter, initialSlaFilter]);
+    if (initialDateFilter !== undefined) setDateFilter(initialDateFilter);
+  }, [initialDeptFilter, initialStatusFilter, initialSlaFilter, initialDateFilter]);
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
@@ -92,9 +96,15 @@ export function TicketTable({
         if (now > dl || dl > now + 60 * 60 * 1000) return false;
       }
 
+      // Date filter (e.g. "2026-10-22")
+      if (dateFilter && dateFilter !== "all") {
+        const createdDate = t.created_at ? t.created_at.slice(0, 10) : "";
+        if (createdDate !== dateFilter) return false;
+      }
+
       return true;
     });
-  }, [tickets, searchTerm, deptFilter, statusFilter, priorityFilter, slaFilter]);
+  }, [tickets, searchTerm, deptFilter, statusFilter, priorityFilter, slaFilter, dateFilter]);
 
   // Formatter for SLA time remaining
   const renderSLATimeRemaining = (ticket: Ticket) => {
@@ -320,6 +330,23 @@ export function TicketTable({
             </select>
           </div>
         </div>
+
+        {/* Active Filter Indicators */}
+        {dateFilter && dateFilter !== "all" && (
+          <div className="flex items-center gap-2 pt-1 border-t border-[#E2E8F0] text-xs">
+            <span className="font-semibold text-slate-500">Filtered by date:</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#E8F3F1] text-[#176B63] font-bold border border-[#B6DCD7]">
+              <span>{dateFilter}</span>
+              <button
+                onClick={() => setDateFilter("all")}
+                className="hover:text-red-700 cursor-pointer ml-1 text-xs"
+                title="Clear date filter"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Table Container */}

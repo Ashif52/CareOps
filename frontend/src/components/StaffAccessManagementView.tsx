@@ -50,11 +50,13 @@ import { PermissionMatrixModal } from "@/components/common/PermissionMatrixModal
 interface StaffAccessManagementViewProps {
   departments: Department[];
   currentUser: UserType | null;
+  onStaffUpdated?: () => void;
 }
 
 export function StaffAccessManagementView({
   departments,
   currentUser,
+  onStaffUpdated,
 }: StaffAccessManagementViewProps) {
   // Navigation Section
   const [activeViewMode, setActiveViewMode] = useState<"directory" | "departments">("directory");
@@ -164,6 +166,7 @@ export function StaffAccessManagementView({
       setMetrics(data.metrics);
       setTotalItems(data.total);
       setTotalPages(data.total_pages);
+      onStaffUpdated?.();
     } catch (err) {
       console.error("Failed to load staff list", err);
     } finally {

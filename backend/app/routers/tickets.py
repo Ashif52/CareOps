@@ -1,8 +1,11 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
 import json
+import re
 from typing import Optional, List
 import uuid
+
+EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -13,13 +16,14 @@ from app.config import settings
 from app.database import get_db
 from app.models import (
     Ticket, User, Department, Room, Evidence, AIVerificationJob,
-    TicketNote, AuditLog
+    TicketNote, AuditLog, DepartmentSupervisor
 )
 from app.schemas import (
     TicketResponse, StaffTicketCreate, TicketAcknowledgeRequest,
     TicketStartWorkRequest, TicketResolutionSubmitRequest,
     TicketClosureRequest, TicketDelayReportRequest, TicketNoteCreate,
-    TicketNoteResponse, TicketContactUpdateRequest, FollowupEmailRequest
+    TicketNoteResponse, TicketContactUpdateRequest, FollowupEmailRequest,
+    TicketAssignRequest
 )
 from app.services.auth_service import get_current_user
 from app.services.ticket_service import TicketService
@@ -28,6 +32,17 @@ from app.services.realtime_service import realtime_hub
 from app.services.email_service import EmailService
 
 router = APIRouter(prefix="/tickets", tags=["Ticket Operations"])
+
+def get_supervisor_authorized_departments(user: User, db: Session) -> List[str]:
+    """Resolves all department IDs where this supervisor has oversight authority."""
+    sup_depts = [r.department_id for r in db.query(DepartmentSupervisor).filter(DepartmentSupervisor.user_id == user.id).all()]
+    if user.department_id and user.department_id not in sup_depts:
+        sup_depts.append(user.department_id)
+    depts_where_sup = db.query(Department.id).filter(Department.supervisor_id == user.id).all()
+    for (d_id,) in depts_where_sup:
+        if d_id not in sup_depts:
+            sup_depts.append(d_id)
+    return sup_depts
 
 def serialize_ticket_for_event(ticket: Ticket, db: Session) -> dict:
     """Helper to convert Ticket ORM to a strictly JSON-serializable dict for realtime SSE streaming"""
@@ -253,12 +268,20 @@ def get_tickets(
     """Authenticated operational tickets listing with multi-parameter filtering"""
     query = db.query(Ticket)
     
-    # Role-Based Scoping: Staff only sees their department or assigned tickets
+    # Role-Based Scoping:
+    # 1. Staff strictly sees ONLY tasks assigned to them (Section 2, 5 & 6)
     if current_user.role == "staff":
+        query = query.filter(Ticket.assigned_staff_id == current_user.id)
+    # 2. Supervisors see all tasks for their authorized departments
+    elif current_user.role == "supervisor":
+        sup_depts = get_supervisor_authorized_departments(current_user, db)
+        if department_id and department_id in sup_depts:
+            query = query.filter(Ticket.department_id == department_id)
+        else:
+            query = query.filter(Ticket.department_id.in_(sup_depts))
         if assigned_to_me:
             query = query.filter(Ticket.assigned_staff_id == current_user.id)
-        elif current_user.department_id:
-            query = query.filter(Ticket.department_id == current_user.department_id)
+    # 3. Admins & SuperAdmins see system-wide tasks
     else:
         if assigned_to_me:
             query = query.filter(Ticket.assigned_staff_id == current_user.id)
@@ -289,20 +312,30 @@ def get_tickets(
     tickets = query.order_by(desc(Ticket.created_at)).offset(skip).limit(limit).all()
     return [enrich_ticket_response(t, db) for t in tickets]
 
-def check_ticket_access(ticket: Ticket, user: User):
+def check_ticket_access(ticket: Ticket, user: User, db: Optional[Session] = None):
     if user.role in ["admin", "superadmin"]:
         return
     if user.role == "supervisor":
-        if user.department_id and ticket.department_id != user.department_id and ticket.assigned_supervisor_id != user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access restricted: Ticket belongs to a different department.")
+        sup_depts = get_supervisor_authorized_departments(user, db) if db else ([user.department_id] if user.department_id else [])
+        if ticket.department_id not in sup_depts and ticket.assigned_supervisor_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access restricted: Ticket belongs to a department ('{ticket.department_id}') you do not supervise."
+            )
         return
     if user.role == "staff":
-        if user.department_id and ticket.department_id != user.department_id and ticket.assigned_staff_id != user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access restricted: Staff can only access requests assigned to their department.")
+        if ticket.assigned_staff_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access restricted: Staff can only access requests assigned to them."
+            )
         return
     if user.role == "patient":
         if ticket.patient_user_id != user.id and ticket.patient_contact != user.phone and ticket.patient_email != user.email:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access restricted: You can only view your own service requests.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access restricted: You can only view your own service requests."
+            )
 
 @router.get("/{ticket_id}", response_model=TicketResponse)
 def get_ticket_detail(
@@ -313,8 +346,42 @@ def get_ticket_detail(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    check_ticket_access(ticket, current_user)
+    check_ticket_access(ticket, current_user, db)
     return enrich_ticket_response(ticket, db)
+
+@router.post("/{ticket_id}/assign", response_model=TicketResponse)
+async def assign_ticket(
+    ticket_id: int,
+    payload: TicketAssignRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Supervisor assigns an incoming service request to an eligible department staff member.
+    Enforces supervisor department authorization, staff eligibility, and optimistic concurrency lock.
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role not in ["supervisor", "admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Only supervisors and administrators can assign tasks.")
+
+    updated = TicketService.assign_ticket(
+        db=db,
+        ticket=ticket,
+        supervisor=current_user,
+        staff_id=payload.staff_id,
+        expected_assigned_staff_id=payload.expected_assigned_staff_id,
+        note=payload.note
+    )
+
+    # Real-time event dispatch to assigned staff and department supervisors
+    try:
+        await realtime_hub.publish_ticket_updated(serialize_ticket_for_event(updated, db))
+    except Exception:
+        pass
+
+    return enrich_ticket_response(updated, db)
 
 @router.post("", response_model=TicketResponse)
 async def create_staff_ticket(
@@ -389,7 +456,7 @@ async def create_staff_ticket(
 @router.post("/{ticket_id}/acknowledge", response_model=TicketResponse)
 async def acknowledge_ticket(
     ticket_id: int,
-    payload: TicketAcknowledgeRequest,
+    payload: Optional[TicketAcknowledgeRequest] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -398,8 +465,9 @@ async def acknowledge_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
     if current_user.role == "patient":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
-    check_ticket_access(ticket, current_user)
-    updated = TicketService.acknowledge_ticket(db, ticket, current_user, payload.note)
+    check_ticket_access(ticket, current_user, db)
+    note = payload.note if payload else None
+    updated = TicketService.acknowledge_ticket(db, ticket, current_user, note)
 
     # Real-time event dispatch
     try:
@@ -412,7 +480,7 @@ async def acknowledge_ticket(
 @router.post("/{ticket_id}/start-work", response_model=TicketResponse)
 async def start_work(
     ticket_id: int,
-    payload: TicketStartWorkRequest,
+    payload: Optional[TicketStartWorkRequest] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -421,8 +489,9 @@ async def start_work(
         raise HTTPException(status_code=404, detail="Ticket not found")
     if current_user.role == "patient":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
-    check_ticket_access(ticket, current_user)
-    updated = TicketService.start_work(db, ticket, current_user, payload.note)
+    check_ticket_access(ticket, current_user, db)
+    note = payload.note if payload else None
+    updated = TicketService.start_work(db, ticket, current_user, note)
 
     # Real-time event dispatch
     try:
@@ -444,7 +513,7 @@ async def submit_resolution(
         raise HTTPException(status_code=404, detail="Ticket not found")
     if current_user.role == "patient":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
-    check_ticket_access(ticket, current_user)
+    check_ticket_access(ticket, current_user, db)
     updated = TicketService.submit_resolution(
         db, ticket, current_user, 
         payload.resolution_summary, 
@@ -492,7 +561,7 @@ async def report_delay(
         raise HTTPException(status_code=404, detail="Ticket not found")
     if current_user.role == "patient":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patients cannot perform staff ticket operations.")
-    check_ticket_access(ticket, current_user)
+    check_ticket_access(ticket, current_user, db)
         
     ticket.delay_reason = payload.delay_reason
     ticket.revised_eta = datetime.now(timezone.utc) + timedelta(minutes=payload.revised_eta_minutes)
@@ -536,7 +605,7 @@ def add_note(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    check_ticket_access(ticket, current_user)
+    check_ticket_access(ticket, current_user, db)
         
     note = TicketNote(
         ticket_id=ticket.id,
@@ -560,10 +629,23 @@ async def update_ticket_contact(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    check_ticket_access(ticket, current_user)
+    check_ticket_access(ticket, current_user, db)
+    
+    if current_user.role not in ["admin", "superadmin", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only supervisors and administrators are authorized to update patient contact information."
+        )
     
     if payload.patient_email is not None:
-        ticket.patient_email = payload.patient_email.strip() or None
+        clean_email = payload.patient_email.strip().lower()
+        if clean_email:
+            if not EMAIL_REGEX.match(clean_email):
+                raise HTTPException(status_code=400, detail="Invalid email format. Please provide a valid address.")
+            ticket.patient_email = clean_email
+        else:
+            ticket.patient_email = None
+
     if payload.patient_contact is not None:
         ticket.patient_contact = payload.patient_contact.strip() or None
         
@@ -605,6 +687,11 @@ async def send_followup_email(
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role not in ["admin", "superadmin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Maintenance staff do not have access to manual email dispatch. Client emails are sent automatically when work is started or finished."
+        )
     check_ticket_access(ticket, current_user)
     
     recipient = (payload.recipient_email or ticket.patient_email or "").strip()

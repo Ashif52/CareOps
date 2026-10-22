@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, desc
 from app.database import get_db
-from app.models import Department, User, Ticket, SLAPolicy, AuditLog
+from app.models import Department, User, Ticket, SLAPolicy, AuditLog, DepartmentSupervisor
 from app.schemas import (
     DepartmentResponse, DepartmentCreate, DepartmentUpdate,
     DepartmentStatusToggle, DepartmentReassignRequest
@@ -17,6 +17,52 @@ router = APIRouter(prefix="/departments", tags=["Departments & Staff"])
 def utc_now():
     return datetime.now(timezone.utc)
 
+def serialize_department_response(dept: Department, db: Session) -> dict:
+    active_tkt_count = db.query(Ticket).filter(
+        Ticket.department_id == dept.id,
+        Ticket.status != "closed"
+    ).count()
+    staff_count = db.query(User).filter(
+        User.department_id == dept.id,
+        User.is_active == True
+    ).count()
+
+    sup_records = db.query(DepartmentSupervisor).filter(DepartmentSupervisor.department_id == dept.id).all()
+    supervisor_ids = [r.user_id for r in sup_records]
+    if dept.supervisor_id and dept.supervisor_id not in supervisor_ids:
+        supervisor_ids.append(dept.supervisor_id)
+
+    supervisors_data = []
+    if supervisor_ids:
+        sup_users = db.query(User).filter(User.id.in_(supervisor_ids), User.is_active == True).all()
+        supervisors_data = [
+            {"id": u.id, "name": u.name, "email": u.email, "designation": u.designation or "Supervisor"}
+            for u in sup_users
+        ]
+
+    categories = []
+    if dept.categories:
+        try:
+            categories = json.loads(dept.categories) if isinstance(dept.categories, str) else dept.categories
+        except Exception:
+            categories = [c.strip() for c in dept.categories.split(",") if c.strip()]
+
+    return {
+        "id": dept.id,
+        "name": dept.name,
+        "code": dept.code.upper(),
+        "description": dept.description,
+        "icon": dept.icon or "Building2",
+        "supervisor_id": dept.supervisor_id,
+        "supervisor_ids": supervisor_ids,
+        "supervisors": supervisors_data,
+        "categories": categories,
+        "is_active": dept.is_active,
+        "created_at": dept.created_at,
+        "active_ticket_count": active_tkt_count,
+        "staff_count": staff_count
+    }
+
 @router.get("", response_model=List[DepartmentResponse])
 def get_departments(
     include_inactive: bool = Query(False),
@@ -26,30 +72,7 @@ def get_departments(
     if not include_inactive:
         query = query.filter(Department.is_active == True)
     departments = query.order_by(Department.name.asc()).all()
-    results = []
-    for d in departments:
-        active_tkt_count = db.query(Ticket).filter(
-            Ticket.department_id == d.id,
-            Ticket.status != "closed"
-        ).count()
-        staff_count = db.query(User).filter(
-            User.department_id == d.id,
-            User.is_active == True
-        ).count()
-        
-        results.append({
-            "id": d.id,
-            "name": d.name,
-            "code": d.code.upper(),
-            "description": d.description,
-            "icon": d.icon or "Building2",
-            "supervisor_id": d.supervisor_id,
-            "is_active": d.is_active,
-            "created_at": d.created_at,
-            "active_ticket_count": active_tkt_count,
-            "staff_count": staff_count
-        })
-    return results
+    return [serialize_department_response(d, db) for d in departments]
 
 @router.post("", response_model=DepartmentResponse)
 def create_department(
@@ -76,17 +99,25 @@ def create_department(
     if db.query(Department).filter(func.lower(Department.name) == clean_name.lower()).first():
         raise HTTPException(status_code=400, detail=f"Department with Name '{clean_name}' already exists.")
 
+    cats_json = json.dumps(payload.categories) if payload.categories else None
+    supervisor_ids = payload.supervisor_ids or ([] if not payload.supervisor_id else [payload.supervisor_id])
+    primary_sup_id = supervisor_ids[0] if supervisor_ids else payload.supervisor_id
+
     dept = Department(
         id=clean_id,
         name=clean_name,
         code=clean_code,
         description=payload.description.strip() if payload.description else None,
         icon=payload.icon or "Building2",
-        supervisor_id=payload.supervisor_id,
+        supervisor_id=primary_sup_id,
+        categories=cats_json,
         is_active=payload.is_active
     )
     db.add(dept)
     db.flush()
+
+    for s_id in supervisor_ids:
+        db.add(DepartmentSupervisor(department_id=dept.id, user_id=s_id))
 
     audit = AuditLog(
         action="DEPARTMENT_CREATED",
@@ -96,25 +127,16 @@ def create_department(
         details=json.dumps({
             "department_id": dept.id,
             "name": dept.name,
-            "code": dept.code
+            "code": dept.code,
+            "supervisor_ids": supervisor_ids,
+            "categories": payload.categories
         })
     )
     db.add(audit)
     db.commit()
     db.refresh(dept)
 
-    return {
-        "id": dept.id,
-        "name": dept.name,
-        "code": dept.code,
-        "description": dept.description,
-        "icon": dept.icon,
-        "supervisor_id": dept.supervisor_id,
-        "is_active": dept.is_active,
-        "created_at": dept.created_at,
-        "active_ticket_count": 0,
-        "staff_count": 0
-    }
+    return serialize_department_response(dept, db)
 
 @router.put("/{department_id}", response_model=DepartmentResponse)
 def update_department(
@@ -158,8 +180,25 @@ def update_department(
         dept.icon = payload.icon
         updates["icon"] = dept.icon
 
-    if payload.supervisor_id is not None:
+    if payload.categories is not None:
+        dept.categories = json.dumps(payload.categories)
+        updates["categories"] = payload.categories
+
+    if payload.supervisor_ids is not None:
+        db.query(DepartmentSupervisor).filter(DepartmentSupervisor.department_id == dept.id).delete()
+        for s_id in payload.supervisor_ids:
+            db.add(DepartmentSupervisor(department_id=dept.id, user_id=s_id))
+        dept.supervisor_id = payload.supervisor_ids[0] if payload.supervisor_ids else None
+        updates["supervisor_ids"] = payload.supervisor_ids
+    elif payload.supervisor_id is not None:
         dept.supervisor_id = payload.supervisor_id if payload.supervisor_id > 0 else None
+        if dept.supervisor_id:
+            exists = db.query(DepartmentSupervisor).filter(
+                DepartmentSupervisor.department_id == dept.id,
+                DepartmentSupervisor.user_id == dept.supervisor_id
+            ).first()
+            if not exists:
+                db.add(DepartmentSupervisor(department_id=dept.id, user_id=dept.supervisor_id))
         updates["supervisor_id"] = dept.supervisor_id
 
     audit = AuditLog(
@@ -173,27 +212,7 @@ def update_department(
     db.commit()
     db.refresh(dept)
 
-    active_tkt_count = db.query(Ticket).filter(
-        Ticket.department_id == dept.id,
-        Ticket.status != "closed"
-    ).count()
-    staff_count = db.query(User).filter(
-        User.department_id == dept.id,
-        User.is_active == True
-    ).count()
-
-    return {
-        "id": dept.id,
-        "name": dept.name,
-        "code": dept.code,
-        "description": dept.description,
-        "icon": dept.icon,
-        "supervisor_id": dept.supervisor_id,
-        "is_active": dept.is_active,
-        "created_at": dept.created_at,
-        "active_ticket_count": active_tkt_count,
-        "staff_count": staff_count
-    }
+    return serialize_department_response(dept, db)
 
 @router.patch("/{department_id}/status")
 def toggle_department_status(

@@ -10,14 +10,7 @@ import {
   Clock,
   Sparkles,
   CheckCircle2,
-  Send,
-  MessageSquare,
-  Smile,
-  Meh,
-  Frown,
   UserCheck,
-  ThumbsUp,
-  Star
 } from "lucide-react";
 import { api, formatTime, formatDateTime } from "@/lib/api";
 
@@ -32,15 +25,6 @@ export default function TrackClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>("");
-  const [isEscalating, setIsEscalating] = useState(false);
-
-  // Patient Feedback State
-  const [selectedEmoji, setSelectedEmoji] = useState<"happy" | "okay" | "unhappy" | null>(null);
-  const [npsScore, setNpsScore] = useState<number | null>(null);
-  const [feedbackComment, setFeedbackComment] = useState("");
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
-
   const fetchStatus = async () => {
     try {
       // Check query parameter for secure tracking token if present
@@ -53,47 +37,6 @@ export default function TrackClient({
       setError(err.message || "Failed to load service ticket.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleEscalate = async () => {
-    if (!confirm("Dispatch an urgent escalation alert directly to the department supervisor via SMS and operational priority queue?")) {
-      return;
-    }
-    setIsEscalating(true);
-    try {
-      await api.escalatePatientTicket(ticketNumber, "Patient requested urgent escalation from tracking portal.");
-      alert("Alert dispatched! The on-duty supervisor has been notified.");
-      await fetchStatus();
-    } catch (err: any) {
-      alert(`Escalation failed: ${err.message || err}`);
-    } finally {
-      setIsEscalating(false);
-    }
-  };
-
-  const handleSubmitFeedback = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEmoji) {
-      alert("Please select one of the satisfaction emojis (Unhappy, Okay, or Happy).");
-      return;
-    }
-
-    setIsSubmittingFeedback(true);
-    try {
-      const token = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
-      await api.submitNPSFeedback({
-        ticket_id: ticket.id,
-        tracking_token: token || undefined,
-        emoji_rating: selectedEmoji,
-        nps_score: npsScore !== null ? npsScore : undefined,
-        feedback_comment: feedbackComment.trim() || undefined,
-      });
-      setFeedbackSubmitted(true);
-    } catch (err: any) {
-      alert(`Failed to record feedback: ${err.message || err}`);
-    } finally {
-      setIsSubmittingFeedback(false);
     }
   };
 
@@ -336,8 +279,8 @@ export default function TrackClient({
                 </div>
               </div>
 
-              {/* Escalation alert or button */}
-              {ticket.is_escalated ? (
+              {/* Priority Escalation Badge if Active */}
+              {ticket.is_escalated && (
                 <div className="p-3.5 rounded-xl bg-[#FEF3F2] border border-[#FECDCA] text-[#B42318] text-xs space-y-1">
                   <div className="flex items-center gap-2 font-bold">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -347,24 +290,7 @@ export default function TrackClient({
                     Department supervisor notified. Direct monitoring in progress.
                   </p>
                 </div>
-              ) : ticket.status !== "closed" ? (
-                <div className="p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-xl flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-bold text-[#92400E] block">Need Urgent Attention?</span>
-                    <span className="text-[11px] text-[#A16207]">
-                      Dispatches priority alert to department lead
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleEscalate}
-                    disabled={isEscalating}
-                    className="px-3 py-1.5 bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold text-xs rounded-lg transition cursor-pointer disabled:opacity-50"
-                  >
-                    {isEscalating ? "Alerting..." : "Escalate Request"}
-                  </button>
-                </div>
-              ) : null}
-
+              )}
               {/* 5-Step Visual Progress Tracker */}
               <div className="space-y-3 pt-1">
                 <h3 className="text-xs font-bold text-[#17212F] uppercase tracking-wider">
@@ -374,28 +300,43 @@ export default function TrackClient({
                 <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#E5E9EF]">
                   {[
                     {
-                      label: "1. Request Registered",
+                      label: "1. Request Received",
+                      desc: "Ticket registered in department queue",
                       active: true,
                       timestamp: ticket.created_at,
                     },
                     {
-                      label: "2. Assigned to Care Team",
-                      active: ticket.status !== "submitted",
-                      timestamp: ticket.assigned_at || (ticket.status !== "submitted" ? ticket.created_at : null),
+                      label: "2. Awaiting Department Review",
+                      desc: "Supervisors reviewing request details",
+                      active: true,
+                      timestamp: ticket.created_at,
                     },
                     {
-                      label: "3. Staff Acknowledged & En Route",
-                      active: ["acknowledged", "in_progress", "work_started", "work_completed", "resolution_submitted", "closed"].includes(ticket.status),
-                      timestamp: ticket.acknowledged_at,
+                      label: "3. Assigned to Care Team",
+                      desc: ticket.assigned_staff_name
+                        ? `Assigned to ${ticket.assigned_staff_name}`
+                        : "Awaiting supervisor assignment",
+                      active: !!ticket.assigned_staff_id,
+                      timestamp: ticket.assigned_at,
                     },
                     {
-                      label: "4. Work in Progress at Location",
-                      active: ["in_progress", "work_started", "work_completed", "resolution_submitted", "closed"].includes(ticket.status),
+                      label: "4. Work Started",
+                      desc: "Staff member has started work at location",
+                      active: [
+                        "in_progress",
+                        "work_started",
+                        "work_completed",
+                        "resolution_submitted",
+                        "closed",
+                      ].includes(ticket.status),
                       timestamp: ticket.in_progress_at || ticket.work_started_at,
                     },
                     {
-                      label: "5. Work Completed & Verified",
-                      active: ["closed", "work_completed", "resolution_submitted"].includes(ticket.status),
+                      label: "5. Request Resolved",
+                      desc: "Work completed and verified",
+                      active: ["closed", "work_completed", "resolution_submitted"].includes(
+                        ticket.status
+                      ),
                       timestamp: ticket.closed_at || ticket.work_completed_at,
                     },
                   ].map((st, idx) => (
@@ -417,6 +358,7 @@ export default function TrackClient({
                         >
                           {st.label}
                         </span>
+                        <span className="text-[10px] text-[#64748B] block">{st.desc}</span>
                         {st.timestamp && (
                           <span className="text-[10px] text-[#667085]">
                             {formatTime(st.timestamp)}
@@ -428,184 +370,50 @@ export default function TrackClient({
                 </div>
               </div>
 
-              {/* Patient Experience Feedback Card (When closed or completed) */}
-              {(ticket.ready_for_feedback || ["closed", "work_completed", "resolution_submitted"].includes(ticket.status)) && (
-                <div className="bg-white rounded-xl border-2 border-[#3868C9] p-5 shadow-sm space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-[#3868C9]" />
-                    <h3 className="text-sm font-bold text-[#17212F]">
-                      How was your hospital service experience?
-                    </h3>
+              {/* Issue-Resolved Confirmation Card (Section 8) */}
+              {(ticket.ready_for_feedback ||
+                ["closed", "work_completed", "resolution_submitted"].includes(ticket.status)) && (
+                <div className="bg-white rounded-xl border-2 border-[#16805D] p-5 shadow-xs space-y-3">
+                  <div className="flex items-center gap-2.5 text-[#16805D]">
+                    <div className="p-2 rounded-xl bg-[#EDF7F2]">
+                      <CheckCircle2 className="h-5 w-5 text-[#16805D]" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-[#0F172A]">
+                        Your request has been resolved.
+                      </h3>
+                      <span className="text-[11px] font-mono text-[#16805D] font-bold">
+                        Reference: {ticket.ticket_number}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Staff Recognition & Care Standards Card */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F8FAFC] to-[#EEF4FD] border-2 border-[#BFDBFE] space-y-3 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="h-12 w-12 rounded-2xl bg-[#3868C9] text-white flex items-center justify-center font-black text-sm border-2 border-[#1E40AF] shadow-xs">
-                          {ticket.assigned_staff_name
-                            ? ticket.assigned_staff_name
-                                .split(" ")
-                                .map((n: string) => n[0])
-                                .join("")
-                                .slice(0, 2)
-                            : "ST"}
-                        </div>
-                        <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#16805D] border-2 border-white rounded-full flex items-center justify-center text-[9px] text-white font-bold">
-                          ✓
-                        </span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-black text-[#0F172A]">
-                            {ticket.assigned_staff_name || "Dedicated Hospital Care Specialist"}
-                          </h4>
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-[#EDF7F2] text-[#16805D] border border-[#A6E1CE]">
-                            Dedicated Care
-                          </span>
-                        </div>
-                        <p className="text-xs font-semibold text-[#64748B]">
-                          {ticket.assigned_staff_designation || `${ticket.department_name || "Healthcare"} Team Specialist`}
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] space-y-2 text-xs">
+                    <div className="flex justify-between text-[#64748B]">
+                      <span>Department:</span>
+                      <span className="font-bold text-[#0F172A] capitalize">
+                        {ticket.department_name || ticket.department_id}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[#64748B]">
+                      <span>Service Category:</span>
+                      <span className="font-semibold text-[#0F172A]">{ticket.category}</span>
+                    </div>
+                    <div className="flex justify-between text-[#64748B]">
+                      <span>Location:</span>
+                      <span className="font-mono text-[#0F172A]">
+                        {ticket.room_number || "Room Location"}
+                      </span>
+                    </div>
+                    {ticket.resolution_summary && (
+                      <div className="pt-2 border-t border-[#E2E8F0] space-y-1">
+                        <span className="font-bold text-[#0F172A] block">Resolution Summary:</span>
+                        <p className="text-[#475569] leading-relaxed">
+                          {ticket.resolution_summary}
                         </p>
                       </div>
-                    </div>
-
-                    {/* Summary of diligence & accomplishment */}
-                    <div className="bg-white p-3 rounded-xl border border-[#CBD5E1] space-y-1.5 text-xs">
-                      <div className="flex items-center gap-1.5 text-[#16805D] font-bold text-[11px] uppercase tracking-wide">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        <span>Work Completed & Hospital Quality Standards</span>
-                      </div>
-                      <p className="text-[#334155] font-medium leading-relaxed">
-                        {ticket.resolution_summary
-                          ? ticket.resolution_summary
-                          : `Attended promptly to your ${ticket.category} service at ${ticket.room_number}, completed all safety tests, and ensured clean handover.`}
-                      </p>
-                      <div className="pt-1.5 flex flex-wrap gap-1.5 text-[10px] font-bold text-[#475569]">
-                        <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Attended On-Time</span>
-                        <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ High Hygiene & Safety Protocol</span>
-                        <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Dignified Patient Care Assured</span>
-                      </div>
-                    </div>
-
-                    <p className="text-[11.5px] font-semibold text-[#1E40AF] leading-snug">
-                      Our frontline team works hard every day to care for your comfort and dignity. If you are satisfied with {ticket.assigned_staff_name ? `${ticket.assigned_staff_name}'s` : "our staff's"} prompt service, please share a positive rating below to recognize their dedication!
-                    </p>
+                    )}
                   </div>
-
-                  {feedbackSubmitted ? (
-                    <div className="p-4 rounded-xl bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-xs font-semibold text-center space-y-1">
-                      <CheckCircle2 className="h-6 w-6 mx-auto" />
-                      <p className="text-sm font-bold">Thank you for your valuable feedback!</p>
-                      <p className="text-[11px] text-[#16805D]/80">
-                        Your response helps us continually refine and deliver dignified patient care.
-                      </p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSubmitFeedback} className="space-y-4 text-xs">
-                      {/* 3 Emoji Buttons */}
-                      <div className="space-y-1.5">
-                        <label className="text-[#344054] font-semibold block">
-                          Overall Satisfaction: <span className="text-[#DC2626]">*</span>
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedEmoji("unhappy")}
-                            className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
-                              selectedEmoji === "unhappy"
-                                ? "bg-[#FEF3F2] border-[#DC2626] text-[#DC2626] font-bold"
-                                : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
-                            }`}
-                          >
-                            <span className="text-2xl">😞</span>
-                            <span className="text-xs">Unhappy</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedEmoji("okay")}
-                            className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
-                              selectedEmoji === "okay"
-                                ? "bg-[#FEF7EC] border-[#F79009] text-[#B54708] font-bold"
-                                : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
-                            }`}
-                          >
-                            <span className="text-2xl">😐</span>
-                            <span className="text-xs">Okay</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedEmoji("happy")}
-                            className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
-                              selectedEmoji === "happy"
-                                ? "bg-[#EDF7F2] border-[#16805D] text-[#16805D] font-bold"
-                                : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
-                            }`}
-                          >
-                            <span className="text-2xl">😊</span>
-                            <span className="text-xs">Happy</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Optional Formal NPS (0 to 10) */}
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[#344054] font-semibold">
-                            Likelihood to recommend (0 = Unlikely, 10 = Extremely Likely):
-                          </label>
-                          {npsScore !== null && (
-                            <span className="font-bold text-[#3868C9] font-mono">{npsScore} / 10</span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between gap-1 overflow-x-auto pb-1">
-                          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
-                            <button
-                              key={score}
-                              type="button"
-                              onClick={() => setNpsScore(score)}
-                              className={`flex-1 min-w-[28px] h-8 rounded-lg font-mono text-xs font-bold transition cursor-pointer ${
-                                npsScore === score
-                                  ? score >= 9
-                                    ? "bg-[#16805D] text-white"
-                                    : score >= 7
-                                    ? "bg-[#F79009] text-white"
-                                    : "bg-[#DC2626] text-white"
-                                  : "bg-[#F8F9FA] border border-[#E5E9EF] text-[#475467] hover:bg-[#EEF4FD]"
-                              }`}
-                            >
-                              {score}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Optional Comment */}
-                      <div className="space-y-1 pt-1">
-                        <label className="text-[#344054] font-semibold block">
-                          Additional Comments (Optional):
-                        </label>
-                        <textarea
-                          value={feedbackComment}
-                          onChange={(e) => setFeedbackComment(e.target.value)}
-                          placeholder="Tell us what went well or how we can improve..."
-                          rows={2}
-                          className="w-full p-2.5 rounded-lg border border-[#D0D5DD] text-xs focus:outline-hidden focus:border-[#3868C9]"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSubmittingFeedback || !selectedEmoji}
-                        className="w-full py-2.5 rounded-lg bg-[#3868C9] hover:bg-[#2C52A4] text-white font-bold text-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-2xs"
-                      >
-                        <Send className="h-3.5 w-3.5" />
-                        <span>{isSubmittingFeedback ? "Submitting Feedback..." : "Submit Experience Feedback"}</span>
-                      </button>
-                    </form>
-                  )}
                 </div>
               )}
 

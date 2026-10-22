@@ -86,6 +86,40 @@ class SLAEngine:
                         )
                         stats["escalated_ack_breach"] += 1
 
+                        # In-App notification: Notify supervisors, assigned staff, and admins
+                        try:
+                            from app.services.in_app_notification_service import InAppNotificationService
+                            InAppNotificationService.notify_department_supervisors(
+                                db=db,
+                                department_id=ticket.department_id,
+                                event_type="SLA_BREACH",
+                                title=f"SLA Acknowledgement Breach: {ticket.ticket_number}",
+                                message=f"Ticket {ticket.ticket_number} (Room {ticket.room_number}) has breached acknowledgement SLA target.",
+                                ticket=ticket,
+                                destination_link=f"/tickets?id={ticket.id}",
+                                dedup_prefix=f"SLA_ACK_BREACH:{ticket.id}"
+                            )
+                            if ticket.assigned_staff_id:
+                                InAppNotificationService.notify_assigned_staff(
+                                    db=db,
+                                    ticket=ticket,
+                                    event_type="SLA_BREACH",
+                                    title=f"SLA Acknowledgement Alert: {ticket.ticket_number}",
+                                    message=f"Ticket {ticket.ticket_number} in Room {ticket.room_number} is overdue for acknowledgement.",
+                                    dedup_key=f"SLA_ACK_BREACH_STAFF:{ticket.id}:{ticket.assigned_staff_id}"
+                                )
+                            InAppNotificationService.notify_administrators(
+                                db=db,
+                                event_type="SLA_BREACH",
+                                title=f"SLA Ack Breach: {ticket.ticket_number}",
+                                message=f"Department: {ticket.department_id.title()} | Room: {ticket.room_number}",
+                                department_id=ticket.department_id,
+                                ticket=ticket,
+                                dedup_prefix=f"ADMIN_SLA_ACK_BREACH:{ticket.id}"
+                            )
+                        except Exception as ne:
+                            logger.warning(f"Error dispatching in-app SLA ack breach alert: {ne}")
+
                 # 2. Check Resolution SLA Breach
                 if ticket.status in ["assigned", "acknowledged", "in_progress", "resolution_submitted"] and ticket.sla_resolution_deadline:
                     res_dl = ticket.sla_resolution_deadline
@@ -106,6 +140,40 @@ class SLAEngine:
                             trigger_source="SLA_RESOLUTION_BREACH"
                         )
                         stats["escalated_resolution_breach"] += 1
+
+                        # In-App notification: Notify supervisors, assigned staff, and admins
+                        try:
+                            from app.services.in_app_notification_service import InAppNotificationService
+                            InAppNotificationService.notify_department_supervisors(
+                                db=db,
+                                department_id=ticket.department_id,
+                                event_type="SLA_BREACH",
+                                title=f"SLA Resolution Breach: {ticket.ticket_number}",
+                                message=f"Ticket {ticket.ticket_number} (Room {ticket.room_number}) breached resolution deadline.",
+                                ticket=ticket,
+                                destination_link=f"/tickets?id={ticket.id}",
+                                dedup_prefix=f"SLA_RES_BREACH:{ticket.id}"
+                            )
+                            if ticket.assigned_staff_id:
+                                InAppNotificationService.notify_assigned_staff(
+                                    db=db,
+                                    ticket=ticket,
+                                    event_type="SLA_BREACH",
+                                    title=f"SLA Deadline Breached: {ticket.ticket_number}",
+                                    message=f"Task in Room {ticket.room_number} is overdue. Please expedite resolution.",
+                                    dedup_key=f"SLA_RES_BREACH_STAFF:{ticket.id}:{ticket.assigned_staff_id}"
+                                )
+                            InAppNotificationService.notify_administrators(
+                                db=db,
+                                event_type="SLA_BREACH",
+                                title=f"SLA Resolution Escalation: {ticket.ticket_number}",
+                                message=f"Department: {ticket.department_id.title()} | Room: {ticket.room_number}",
+                                department_id=ticket.department_id,
+                                ticket=ticket,
+                                dedup_prefix=f"ADMIN_SLA_RES_BREACH:{ticket.id}"
+                            )
+                        except Exception as ne:
+                            logger.warning(f"Error dispatching in-app SLA res breach alert: {ne}")
                         
             db.commit()
         except Exception as e:

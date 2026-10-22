@@ -24,7 +24,7 @@ import {
   Phone,
   Mail
 } from "lucide-react";
-import { api, setStoredToken, User as UserType } from "@/lib/api";
+import { api, setStoredToken, User as UserType, SimulationAccount } from "@/lib/api";
 
 interface PortalLoginGatewayProps {
   onLoginSuccess: (user: UserType, initialTab?: string) => void;
@@ -56,6 +56,19 @@ export function PortalLoginGateway({
   const [isSubmittingForgot, setIsSubmittingForgot] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
+  const [simAccounts, setSimAccounts] = useState<SimulationAccount[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getSimulationAccounts()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setSimAccounts(data);
+        }
+      })
+      .catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
 
   // Pre-warm backend and check health
   useEffect(() => {
@@ -374,7 +387,7 @@ export function PortalLoginGateway({
                 placeholder={
                   selectedPortal === "admin"
                     ? "admin@careops.hospital"
-                    : "EMP-MNT-101 or technician.rajesh@careops.hospital"
+                    : "EMP-ID or staff@careops.hospital"
                 }
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#176B63] font-mono text-slate-900"
               />
@@ -447,46 +460,89 @@ export function PortalLoginGateway({
             <div className="flex flex-wrap gap-1.5">
               {selectedPortal === "admin" && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => fillPreset("admin@careops.hospital", "password123")}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Dr. Alistair Vance (Admin)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillPreset("superadmin@careops.hospital", "password123")}
-                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Superadmin (Root)
-                  </button>
+                  {simAccounts.filter((a) => a.role === "admin" || a.role === "superadmin").length > 0 ? (
+                    simAccounts
+                      .filter((a) => a.role === "admin" || a.role === "superadmin")
+                      .map((acc) => (
+                        <button
+                          key={acc.email}
+                          type="button"
+                          onClick={() => fillPreset(acc.email, "password123")}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                            acc.role === "superadmin"
+                              ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {acc.name} ({acc.badge || (acc.role === "superadmin" ? "Root" : "Admin")})
+                        </button>
+                      ))
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => fillPreset("admin@careops.hospital", "password123")}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                      >
+                        Hospital Administrator (Admin)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fillPreset("superadmin@careops.hospital", "password123")}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                      >
+                        Superadmin (Root)
+                      </button>
+                    </>
+                  )}
                 </>
               )}
 
               {selectedPortal === "staff" && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => fillPreset("EMP-MNT-101", "password123")}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Rajesh Sharma (EMP-MNT-101)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillPreset("EMP-NRS-202", "password123")}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Nurse Priya (EMP-NRS-202)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillPreset("supervisor.mnt@careops.hospital", "password123")}
-                    className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Vikramaditya (Supervisor)
-                  </button>
+                  {simAccounts.filter((a) => a.role === "supervisor" || a.role === "staff").length > 0 ? (
+                    simAccounts
+                      .filter((a) => a.role === "supervisor" || a.role === "staff")
+                      .slice(0, 4)
+                      .map((acc) => (
+                        <button
+                          key={acc.email}
+                          type="button"
+                          onClick={() => fillPreset(acc.employee_id || acc.email, "password123")}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                            acc.role === "supervisor"
+                              ? "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {acc.name} ({acc.employee_id || acc.badge || acc.role})
+                        </button>
+                      ))
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => fillPreset("supervisor.mnt@careops.hospital", "password123")}
+                        className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                      >
+                        Department Supervisor
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fillPreset("EMP-MNT-101", "password123")}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                      >
+                        Maintenance Specialist
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fillPreset("EMP-NRS-202", "password123")}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                      >
+                        Staff Nurse
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>

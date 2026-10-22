@@ -175,6 +175,8 @@ class DepartmentBase(BaseModel):
     description: Optional[str] = None
     icon: str = "Wrench"
     supervisor_id: Optional[int] = None
+    supervisor_ids: Optional[List[int]] = []
+    categories: Optional[List[str]] = []
     is_active: bool = True
 
 class DepartmentCreate(DepartmentBase):
@@ -186,6 +188,8 @@ class DepartmentUpdate(BaseModel):
     description: Optional[str] = None
     icon: Optional[str] = None
     supervisor_id: Optional[int] = None
+    supervisor_ids: Optional[List[int]] = None
+    categories: Optional[List[str]] = None
 
 class DepartmentStatusToggle(BaseModel):
     is_active: bool
@@ -199,6 +203,7 @@ class DepartmentResponse(DepartmentBase):
     created_at: datetime
     active_ticket_count: Optional[int] = 0
     staff_count: Optional[int] = 0
+    supervisors: Optional[List[dict]] = []
     
     class Config:
         from_attributes = True
@@ -295,6 +300,12 @@ class PatientSessionResponse(BaseModel):
     patient_identifier: Optional[str] = None
     expires_in_hours: int = 12
 
+class PatientAttachment(BaseModel):
+    media_type: str = "image"  # "image" or "video"
+    file_name: Optional[str] = None
+    data_base64: str
+    file_size_bytes: Optional[int] = None
+
 class PatientTicketCreate(BaseModel):
     qr_token: str  # Scanned from room QR code
     department_id: str
@@ -306,7 +317,8 @@ class PatientTicketCreate(BaseModel):
     idempotency_key: Optional[str] = None
     voice_recording_base64: Optional[str] = None
     voice_transcription: Optional[str] = None
-    photo_base64: Optional[str] = None
+    photo_base64: Optional[str] = None  # Legacy single photo
+    attachments: Optional[List[PatientAttachment]] = None
 
 class PatientRegisterRequest(BaseModel):
     name: str
@@ -340,6 +352,11 @@ class FollowupEmailRequest(BaseModel):
     stage: str  # "work_started" | "work_finished"
     recipient_email: Optional[str] = None
     custom_notes: Optional[str] = None
+
+class TicketAssignRequest(BaseModel):
+    staff_id: int
+    expected_assigned_staff_id: Optional[int] = -999
+    note: Optional[str] = None
 
 class TicketAcknowledgeRequest(BaseModel):
     note: Optional[str] = None

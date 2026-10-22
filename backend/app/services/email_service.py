@@ -194,28 +194,54 @@ class EmailService:
         }
         if from_email and "@" in from_email and not from_email.endswith(".hospital"):
             payload["reply_to"] = from_email
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=data,
-            headers={
-                "Authorization": f"Bearer {api_key.strip()}",
-                "Content-Type": "application/json",
-                "User-Agent": "CareOps-Healthcare/1.0"
-            },
-            method="POST"
-        )
-        import urllib.error
+
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as http_err:
+            import httpx
+            with httpx.Client(timeout=20.0) as client:
+                resp = client.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {api_key.strip()}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                if resp.status_code in (200, 201):
+                    return resp.json()
+                else:
+                    try:
+                        err_body = resp.json()
+                        detail = err_body.get("message", resp.text)
+                    except Exception:
+                        detail = f"HTTP {resp.status_code}: {resp.text}"
+                    raise RuntimeError(f"Resend API Error ({resp.status_code}): {detail}")
+        except Exception as http_err:
+            if "Resend API Error" in str(http_err):
+                raise
+            import urllib.request
+            import urllib.error
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=data,
+                headers={
+                    "Authorization": f"Bearer {api_key.strip()}",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
             try:
-                err_body = json.loads(http_err.read().decode("utf-8"))
-                detail = err_body.get("message", str(err_body))
-            except Exception:
-                detail = f"HTTP {http_err.code}: {http_err.reason}"
-            raise RuntimeError(f"Resend API Error ({http_err.code}): {detail}")
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as u_err:
+                try:
+                    err_body = json.loads(u_err.read().decode("utf-8"))
+                    detail = err_body.get("message", str(err_body))
+                except Exception:
+                    detail = f"HTTP {u_err.code}: {u_err.reason}"
+                raise RuntimeError(f"Resend API Error ({u_err.code}): {detail}")
+            except Exception as other_err:
+                raise RuntimeError(f"Resend Transport Failure: {other_err}")
 
     @staticmethod
     def _send_email_worker(email_log_id: int):
@@ -860,7 +886,7 @@ class EmailService:
             f"Happy Care Hospital Operations - Patient Care & Facilities Management"
         )
 
-        subject = f"Happy Care - Service Confirmation: {ticket.ticket_number} ({dept_name})"
+        subject = f"Request Received — Reference {ticket.ticket_number}"
 
         return {
             "subject": subject,
@@ -873,87 +899,130 @@ class EmailService:
     @staticmethod
     def on_ticket_created(db: Session, ticket: Ticket):
         """
-        Triggered when a patient or staff member registers a new complaint:
-        1. Patient confirmation email (with full WhatsApp quote & 5-step timeline)
-        2. Staff notification email (to assigned staff or department personnel)
+        Triggered when a patient registers a new service request:
+        1. Patient Email 1: Request received (Subject: Request Received — Reference [REQUEST_ID])
+        2. Supervisor notification email (routed exclusively to active supervisors of that department)
         3. Administrator notification email
+        NOTE: Ordinary staff are NOT notified or assigned at this stage (Section 4 & 9).
         """
         dept = db.query(Department).filter(Department.id == ticket.department_id).first()
         dept_name = dept.name if dept else ticket.department_id.capitalize()
         cfg = EmailService.get_smtp_config(db)
 
-        # Generate rich maintenance content
         rendered = EmailService.build_patient_maintenance_email_content(
             ticket=ticket,
             dept_name=dept_name
         )
 
-        # 1. Patient Confirmation Email
+        # 1. Patient Operational Email 1 — Request received (Idempotent)
         patient_email = ticket.patient_email or (ticket.patient_user.email if ticket.patient_user else None)
         if not patient_email and ticket.patient_contact and "@" in ticket.patient_contact:
             patient_email = ticket.patient_contact.strip()
 
         if patient_email:
-            EmailService.enqueue_email(
-                db=db,
-                recipient_email=patient_email,
-                recipient_name=ticket.patient_user.name if ticket.patient_user else "Hospital Patient",
-                subject=rendered["subject"],
-                body_html=rendered["html"],
-                body_text=rendered["text"],
-                email_type="patient_submission_confirmation",
-                ticket_id=ticket.id
-            )
+            already_sent = db.query(EmailLog).filter(
+                EmailLog.ticket_id == ticket.id,
+                EmailLog.email_type == "patient_request_received"
+            ).first()
+            if not already_sent:
+                EmailService.enqueue_email(
+                    db=db,
+                    recipient_email=patient_email,
+                    recipient_name=ticket.patient_user.name if ticket.patient_user else "Hospital Patient",
+                    subject=f"Request Received — Reference {ticket.ticket_number}",
+                    body_html=rendered["html"],
+                    body_text=rendered["text"],
+                    email_type="patient_request_received",
+                    ticket_id=ticket.id
+                )
 
-        # 2. Staff Notification Email
-        staff_recipient = None
-        staff_name = None
-        if ticket.assigned_staff and ticket.assigned_staff.email:
-            staff_recipient = ticket.assigned_staff.email
-            staff_name = ticket.assigned_staff.name
-        elif dept and dept.supervisor_id:
-            sup = db.query(User).filter(User.id == dept.supervisor_id).first()
-            if sup and sup.email:
-                staff_recipient = sup.email
-                staff_name = sup.name
-        elif cfg["maintenance_email"] and ticket.department_id == "maintenance":
-            staff_recipient = cfg["maintenance_email"]
-            staff_name = "Maintenance Department"
+        # 2. Supervisor Notification Email (Routed EXCLUSIVELY to authorized supervisors of this department)
+        from app.models import DepartmentSupervisor
+        sup_ids = [r[0] for r in db.query(DepartmentSupervisor.user_id).filter(DepartmentSupervisor.department_id == ticket.department_id).all()]
+        if dept and dept.supervisor_id and dept.supervisor_id not in sup_ids:
+            sup_ids.append(dept.supervisor_id)
+        
+        supervisors = db.query(User).filter(User.id.in_(sup_ids), User.is_active == True).all() if sup_ids else []
+        if not supervisors and dept:
+            supervisors = db.query(User).filter(User.department_id == dept.id, User.role == "supervisor", User.is_active == True).all()
 
-        if staff_recipient:
-            staff_subj = f"Happy Care - New Ticket Assigned: {ticket.ticket_number} ({ticket.room_number})"
-            EmailService.enqueue_email(
-                db=db,
-                recipient_email=staff_recipient,
-                recipient_name=staff_name,
-                subject=staff_subj,
-                body_html=rendered["html"],
-                body_text=rendered["text"],
-                email_type="staff_ticket_assigned",
-                ticket_id=ticket.id
-            )
+        for sup in supervisors:
+            if sup.email:
+                sup_subj = f"[Supervisor Queue] New Service Request Awaiting Assignment: {ticket.ticket_number} ({dept_name})"
+                sup_html = EmailService._render_email_base(
+                    title=f"New Request Awaiting Assignment: {ticket.ticket_number}",
+                    preheader=f"A new request has been submitted for {dept_name} at {ticket.room_number}",
+                    content_html=f"""
+                    <div style="background-color: #F8FAFC; border: 2px solid #CBD5E1; border-radius: 12px; padding: 20px;">
+                      <h3 style="color: #0F172A; margin-top: 0;">New Request Awaiting Staff Assignment</h3>
+                      <p>Hello <strong>{sup.name}</strong>, a patient has submitted a request to <strong>{dept_name}</strong>.</p>
+                      <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; font-size: 13px; line-height: 1.6;">
+                        <div>&bull; Reference: <strong>{ticket.ticket_number}</strong></div>
+                        <div>&bull; Location: <strong>{ticket.room_number}</strong></div>
+                        <div>&bull; Category: <strong>{ticket.category}</strong></div>
+                        <div>&bull; Description: {ticket.description}</div>
+                      </div>
+                      <p style="margin-top: 14px; font-size: 13px; color: #475569;">
+                        Please open your Supervisor Workspace to review and assign an eligible department technician.
+                      </p>
+                    </div>
+                    """
+                )
+                EmailService.enqueue_email(
+                    db=db,
+                    recipient_email=sup.email,
+                    recipient_name=sup.name,
+                    subject=sup_subj,
+                    body_html=sup_html,
+                    body_text=f"New Request Awaiting Assignment: {ticket.ticket_number} at {ticket.room_number} ({ticket.category}). Please assign via Supervisor Portal.",
+                    email_type="supervisor_new_request_alert",
+                    ticket_id=ticket.id
+                )
 
-        # 3. Admin Notification Email
-        admin_recipients = []
-        if cfg["work_email"]:
-            admin_recipients.append(cfg["work_email"])
-        admins = db.query(User).filter(User.role.in_(["admin", "superadmin"]), User.is_active == True).all()
-        for a in admins:
-            if a.email and a.email not in admin_recipients:
-                admin_recipients.append(a.email)
+    @staticmethod
+    def send_staff_assignment_notification(db: Session, ticket: Ticket, staff: User, supervisor: User) -> Optional[EmailLog]:
+        """
+        Notifies ONLY the assigned staff member that a task has been assigned to them by their supervisor.
+        Does NOT email the patient (Section 9: internal assignment only).
+        """
+        if not staff.email:
+            return None
 
-        for admin_email in admin_recipients[:3]:
-            admin_subj = f"[Happy Care Alert] New Patient Submission: {ticket.ticket_number} ({dept_name})"
-            EmailService.enqueue_email(
-                db=db,
-                recipient_email=admin_email,
-                recipient_name="Hospital Administrator",
-                subject=admin_subj,
-                body_html=rendered["html"],
-                body_text=rendered["text"],
-                email_type="admin_new_ticket_alert",
-                ticket_id=ticket.id
-            )
+        dept = db.query(Department).filter(Department.id == ticket.department_id).first()
+        dept_name = dept.name if dept else ticket.department_id.capitalize()
+
+        subject = f"Task Assigned: {ticket.ticket_number} — Room {ticket.room_number} [{dept_name}]"
+        content_html = f"""
+        <div style="background-color: #EFF6FF; border: 2px solid #BFDBFE; border-radius: 12px; padding: 20px;">
+          <h3 style="color: #1E3A8A; margin-top: 0;">Task Assigned by Supervisor {supervisor.name}</h3>
+          <p>Hello <strong>{staff.name}</strong>, a new task has been assigned to you.</p>
+          <div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 14px; font-size: 13px; line-height: 1.6;">
+            <div>&bull; Reference: <strong>{ticket.ticket_number}</strong></div>
+            <div>&bull; Location: <strong>{ticket.room_number}</strong></div>
+            <div>&bull; Department: <strong>{dept_name}</strong></div>
+            <div>&bull; Category: <strong>{ticket.category}</strong></div>
+            <div>&bull; Description: {ticket.description}</div>
+          </div>
+          <p style="margin-top: 14px; font-size: 13px; color: #475569;">
+            Please log in to your Staff Portal to review details and begin work when ready.
+          </p>
+        </div>
+        """
+        full_html = EmailService._render_email_base(
+            title=f"Task Assigned: {ticket.ticket_number}",
+            preheader=f"Assigned to {ticket.room_number} for {ticket.category}",
+            content_html=content_html
+        )
+        return EmailService.enqueue_email(
+            db=db,
+            recipient_email=staff.email,
+            recipient_name=staff.name,
+            subject=subject,
+            body_html=full_html,
+            body_text=f"Task Assigned: {ticket.ticket_number} at {ticket.room_number} by Supervisor {supervisor.name}.",
+            email_type="staff_ticket_assigned",
+            ticket_id=ticket.id
+        )
 
     @staticmethod
     def send_work_started_email(
@@ -965,9 +1034,20 @@ class EmailService:
         recipient: Optional[str] = None
     ) -> Optional[EmailLog]:
         """
-        Follow-up message #1: Work Started notification for client/patient.
-        Dispatched when specialist initiates physical repairs/tasks at bedside.
+        Patient Operational Email 2: Work Started notification.
+        Dispatched when assigned staff member explicitly starts the task.
+        Idempotent: exactly once per ticket lifecycle.
         """
+        # Idempotency check: exactly once
+        already_dispatched = db.query(EmailLog).filter(
+            EmailLog.ticket_id == ticket.id,
+            EmailLog.email_type == "patient_work_started",
+            EmailLog.status.in_(["sent", "queued"])
+        ).first()
+        if already_dispatched:
+            logger.info(f"Ticket #{ticket.id} patient work started email already sent. Skipping duplicate.")
+            return already_dispatched
+
         target_override = recipient_email_override or recipient
         patient_email = target_override or ticket.patient_email or (ticket.patient_user.email if ticket.patient_user else None)
         if not patient_email and ticket.patient_contact and "@" in ticket.patient_contact:
@@ -993,7 +1073,7 @@ class EmailService:
         )
         started_at_str = (ticket.work_started_at or ticket.in_progress_at or utc_now()).strftime("%I:%M %p, %d %b %Y")
 
-        subject = f"🛠️ Work Started: Specialist Attending to Room {ticket.room_number} [{ticket.ticket_number}]"
+        subject = f"Work Started — Reference {ticket.ticket_number}"
 
         content_html = f"""
         <div style="background-color: #EFF6FF; border: 2px solid #BFDBFE; border-radius: 12px; padding: 20px; margin-bottom: 22px;">
@@ -1001,10 +1081,10 @@ class EmailService:
             &#9881; Milestone Update &bull; Work Actively in Progress
           </div>
           <h2 style="margin: 0 0 8px 0; color: #1E3A8A; font-size: 20px; font-weight: 800;">
-            Specialist Commenced Work at Bedside
+            Specialist Commenced Work
           </h2>
           <p style="margin: 0 0 16px 0; color: #334155; font-size: 14px; line-height: 1.6;">
-            Hello <strong>{recipient_name}</strong>, our hospital specialist <strong>{assigned_staff_name}</strong> ({assigned_staff_role}) has arrived at <strong>{ticket.room_number}</strong> and work has actively begun on your service request.
+            Hello <strong>{recipient_name}</strong>, our hospital specialist <strong>{assigned_staff_name}</strong> ({assigned_staff_role}) has arrived and work has actively begun on your service request.
           </p>
 
           <div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 14px 16px; font-size: 13px; line-height: 1.6; color: #0F172A; margin-bottom: 16px;">
@@ -1013,16 +1093,12 @@ class EmailService:
             <div>&bull; Department: <strong>{dept_name}</strong></div>
             <div>&bull; Issue Category: <strong>{ticket.category}</strong></div>
             <div>&bull; Work Commenced: <strong>{started_at_str}</strong></div>
-            {f'<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E2E8F0; color: #475569;">&bull; Note from Specialist: <em>{update_note}</em></div>' if update_note else ''}
+            {f'<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E2E8F0; color: #475569;">&bull; Note: <em>{update_note}</em></div>' if update_note else ''}
           </div>
 
           <a href="{tracking_url}" target="_blank" style="display: block; background-color: #2563EB; color: #FFFFFF; font-weight: 800; font-size: 14px; text-decoration: none; padding: 13px 20px; border-radius: 8px; text-align: center; letter-spacing: 0.02em;">
             &#10140; Track Live Progress on Bedside Display
           </a>
-        </div>
-
-        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 16px; font-size: 13px; color: #475569;">
-          <strong>What happens next?</strong> Once work and physical testing are finished, you will receive an official completion notification email with the resolution report and a 1-click rating option.
         </div>
         """
 
@@ -1068,10 +1144,20 @@ class EmailService:
         recipient: Optional[str] = None
     ) -> Optional[EmailLog]:
         """
-        Follow-up message #2: Work Finished notification for client/patient.
-        Dispatched when technician completes work or supervisor signs off.
-        Includes resolution summary, replaced parts, digital report link, and rating CTA.
+        Patient Operational Email 3: Work Completed notification.
+        Dispatched when authorized staff completes task or supervisor closes it.
+        Idempotent: exactly once per ticket lifecycle.
+        No satisfaction rating survey buttons included.
         """
+        already_dispatched = db.query(EmailLog).filter(
+            EmailLog.ticket_id == ticket.id,
+            EmailLog.email_type == "patient_work_completed",
+            EmailLog.status.in_(["sent", "queued"])
+        ).first()
+        if already_dispatched:
+            logger.info(f"Ticket #{ticket.id} patient work completed email already sent. Skipping duplicate.")
+            return already_dispatched
+
         target_override = recipient_email_override or recipient
         patient_email = target_override or ticket.patient_email or (ticket.patient_user.email if ticket.patient_user else None)
         if not patient_email and ticket.patient_contact and "@" in ticket.patient_contact:
@@ -1088,7 +1174,6 @@ class EmailService:
         base_url = (getattr(settings, "FRONTEND_URL", "") or "http://192.168.31.219:3000").rstrip("/")
         token_param = f"?token={ticket.patient_tracking_token}" if ticket.patient_tracking_token else ""
         tracking_url = f"{base_url}/track/{ticket.ticket_number}{token_param}"
-        feedback_url = f"{tracking_url}&action=feedback"
 
         assigned_staff_name = ticket.assigned_staff.name if ticket.assigned_staff else actor_name
         assigned_staff_role = (
@@ -1098,9 +1183,9 @@ class EmailService:
         )
         completed_at_str = (ticket.work_completed_at or ticket.closed_at or utc_now()).strftime("%I:%M %p, %d %b %Y")
         res_summary = summary or ticket.resolution_summary or "Service inspected, repaired, and functionally verified."
-        parts_used = parts or ticket.parts_replaced or "Standard service inspection (no external parts required)"
+        parts_used = parts or ticket.parts_replaced or "Standard service inspection"
 
-        subject = f"✅ Work Finished: Service Request Resolved for Room {ticket.room_number} [{ticket.ticket_number}]"
+        subject = f"Work Completed — Reference {ticket.ticket_number}"
 
         content_html = f"""
         <div style="background-color: #EDF7F2; border: 2px solid #A6E1CE; border-radius: 12px; padding: 20px; margin-bottom: 22px;">
@@ -1108,10 +1193,10 @@ class EmailService:
             &#10003; Milestone Update &bull; Work Completed & Verified
           </div>
           <h2 style="margin: 0 0 8px 0; color: #14532D; font-size: 20px; font-weight: 800;">
-            Work Completed & Service Verified
+            Your Request Has Been Resolved
           </h2>
           <p style="margin: 0 0 16px 0; color: #166534; font-size: 14px; line-height: 1.6;">
-            Hello <strong>{recipient_name}</strong>, great news! The maintenance and repair work for your service request at <strong>{ticket.room_number}</strong> has been successfully completed and functionally tested.
+            Hello <strong>{recipient_name}</strong>, the service request for your room at <strong>{ticket.room_number}</strong> has been successfully completed and functionally verified.
           </p>
 
           <div style="background-color: #FFFFFF; border: 1px solid #A6E1CE; border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.7; color: #0F172A; margin-bottom: 16px;">
@@ -1124,21 +1209,14 @@ class EmailService:
               &bull; <strong>Resolution Summary:</strong><br>
               <span style="color: #16805D; font-weight: 700;">{res_summary}</span>
             </div>
-            {f'<div style="margin-top: 6px; color: #64748B;">&bull; <strong>Replaced Parts / Components:</strong> {parts_used}</div>' if parts_used else ''}
+            {f'<div style="margin-top: 6px; color: #64748B;">&bull; <strong>Components Checked:</strong> {parts_used}</div>' if parts_used else ''}
           </div>
 
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 12px;">
             <tr>
-              <td style="padding-bottom: 8px;">
-                <a href="{tracking_url}" target="_blank" style="display: block; background-color: #176B63; color: #FFFFFF; font-weight: 800; font-size: 14px; text-decoration: none; padding: 13px 20px; border-radius: 8px; text-align: center; letter-spacing: 0.02em;">
-                  &#10140; View Completed Service Report & Digital Log
-                </a>
-              </td>
-            </tr>
-            <tr>
               <td>
-                <a href="{feedback_url}" target="_blank" style="display: block; background-color: #F8FAFC; color: #16805D; border: 2px solid #16805D; font-weight: 800; font-size: 13px; text-decoration: none; padding: 11px 18px; border-radius: 8px; text-align: center;">
-                  &#11088; Rate Your Service Experience (1 &ndash; 5 Stars)
+                <a href="{tracking_url}" target="_blank" style="display: block; background-color: #176B63; color: #FFFFFF; font-weight: 800; font-size: 14px; text-decoration: none; padding: 13px 20px; border-radius: 8px; text-align: center; letter-spacing: 0.02em;">
+                  &#10140; View Final Digital Resolution Record
                 </a>
               </td>
             </tr>
@@ -1146,28 +1224,27 @@ class EmailService:
         </div>
 
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; font-size: 12px; color: #64748B; text-align: center;">
-          Thank you for helping us maintain top clinical and patient care standards at Metropolitan General Hospital.
+          Thank you for choosing Metropolitan General Hospital.
         </div>
         """
 
         full_html = EmailService._render_email_base(
-            title=f"Work Completed - {ticket.ticket_number}",
-            preheader=f"Work has been completed and verified for your request at {ticket.room_number}",
+            title=f"Request Resolved - {ticket.ticket_number}",
+            preheader=f"Your request has been resolved at {ticket.room_number}",
             content_html=content_html
         )
 
         plain_text = (
-            f"CareOps Hospital Operations - Work Finished Notice\n\n"
+            f"CareOps Hospital Operations - Request Resolved Notice\n\n"
             f"Hello {recipient_name},\n\n"
-            f"The service work for your request at {ticket.room_number} has been completed and verified.\n\n"
+            f"The service request at {ticket.room_number} has been resolved.\n\n"
             f"Ticket: {ticket.ticket_number}\n"
             f"Location: {ticket.room_number}\n"
             f"Department: {dept_name}\n"
             f"Specialist: {assigned_staff_name} ({assigned_staff_role})\n"
             f"Completed At: {completed_at_str}\n"
             f"Resolution: {res_summary}\n\n"
-            f"View completed report:\n{tracking_url}\n\n"
-            f"Rate your service experience:\n{feedback_url}\n"
+            f"View completed record:\n{tracking_url}\n"
         )
 
         return EmailService.enqueue_email(
@@ -1184,10 +1261,10 @@ class EmailService:
     @staticmethod
     def on_ticket_status_updated(db: Session, ticket: Ticket, new_status: str, actor_name: str, update_note: Optional[str] = None):
         """
-        Notifies patient and staff when a ticket's status changes:
-        - When 'in_progress': dispatches high-priority dedicated Work Started follow-up email.
-        - When 'resolution_submitted' or 'closed': dispatches dedicated Work Completed follow-up email.
-        - For other status updates: sends milestone timeline status alert.
+        Only sends patient operational emails for the two approved status milestones:
+        - Email 2: Work Started (when status -> 'in_progress')
+        - Email 3: Work Completed (when status -> 'resolution_submitted' or 'closed')
+        Never sends patient emails for internal notes, assignments, reassignment, or supervisor checks.
         """
         norm_status = (new_status or "").lower()
 
@@ -1210,7 +1287,8 @@ class EmailService:
                 parts=ticket.parts_replaced
             )
 
-        # Default milestone update for other states (acknowledged, delayed, reopened)
+        # All other internal statuses (acknowledged, delayed, notes) do NOT send patient emails.
+        return None
         patient_email = ticket.patient_email or (ticket.patient_user.email if ticket.patient_user else None)
         if not patient_email and ticket.patient_contact and "@" in ticket.patient_contact:
             patient_email = ticket.patient_contact.strip()

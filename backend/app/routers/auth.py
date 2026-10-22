@@ -467,6 +467,63 @@ def reset_password_with_token(
         "message": "Your password has been reset successfully. You may now log in with your new password."
     }
 
+@router.get("/simulation-accounts")
+def get_simulation_accounts(db: Session = Depends(get_db)):
+    """
+    Returns real, dynamically configured hospital personnel records for role simulation.
+    Strictly queries the live database so any staff edits or renaming immediately reflect in workspace.
+    """
+    accounts = []
+    seen_emails = set()
+
+    def add_user(u: Optional[User], role_badge: Optional[str] = None, fallback_desc: str = ""):
+        if not u or u.email in seen_emails:
+            return
+        seen_emails.add(u.email)
+        
+        dept_name = None
+        if u.department_id:
+            dept = db.query(Department).filter(Department.id == u.department_id).first()
+            dept_name = dept.name if dept else u.department_id.capitalize()
+
+        badge = role_badge or (dept_name.upper() if dept_name and u.role in ["supervisor", "staff"] else u.role.upper())
+        desc = u.designation or fallback_desc or (f"{dept_name} {u.role.capitalize()}" if dept_name else f"Hospital {u.role.capitalize()}")
+
+        accounts.append({
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": u.role,
+            "badge": badge,
+            "employee_id": u.employee_id,
+            "department_id": u.department_id,
+            "department_name": dept_name,
+            "designation": u.designation,
+            "desc": desc
+        })
+
+    # 1. Superadmin (Root)
+    superadmins = db.query(User).filter(User.role.in_(["superadmin", "super_admin"]), User.is_active == True).order_by(User.id.asc()).limit(2).all()
+    for sa in superadmins:
+        add_user(sa, role_badge="SUPERADMIN", fallback_desc="Database purge & root platform authority")
+
+    # 2. Administrator
+    admins = db.query(User).filter(User.role == "admin", User.is_active == True).order_by(User.id.asc()).limit(2).all()
+    for a in admins:
+        add_user(a, role_badge="ADMINISTRATOR", fallback_desc="Full hospital controls & policies")
+
+    # 3. Department Supervisors (e.g. Maintenance, Medical, Dietitian)
+    supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).order_by(User.id.asc()).limit(4).all()
+    for s in supervisors:
+        add_user(s, fallback_desc="AI review sign-offs & SLA escalations")
+
+    # 4. Department Staff / Specialists
+    staff_members = db.query(User).filter(User.role == "staff", User.is_active == True).order_by(User.id.asc()).limit(4).all()
+    for sm in staff_members:
+        add_user(sm, fallback_desc="Acknowledge, capture evidence & resolve")
+
+    return accounts
+
 @router.get("/demo-users")
 def get_demo_users(db: Session = Depends(get_db)):
     """Returns quick login credentials for demonstration - ONLY accessible in DEBUG_MODE"""

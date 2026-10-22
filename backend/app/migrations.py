@@ -6,9 +6,9 @@ and seeds cross-department personnel without foreign key violations.
 """
 
 import logging
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, or_
 from app.database import engine, Base, SessionLocal
-from app.models import User, Department, Ticket
+from app.models import User, Department, Ticket, Notification
 from app.services.auth_service import get_password_hash
 
 logger = logging.getLogger("careops.migrations")
@@ -31,6 +31,7 @@ def run_migrations():
     table_columns = {
         "departments": [
             ("supervisor_id", "INTEGER"),
+            ("categories", "TEXT"),
             ("is_active", bool_true_type),
         ],
         "users": [
@@ -311,7 +312,7 @@ def run_migrations():
         ]
 
         for p in core_personnel:
-            u = db.query(User).filter(User.email == p["email"]).first()
+            u = db.query(User).filter(or_(User.email == p["email"], User.employee_id == p["emp_id"])).first()
             if not u:
                 u = User(
                     email=p["email"],
@@ -329,13 +330,13 @@ def run_migrations():
                 db.add(u)
                 logger.info(f"Created personnel: {p['name']} ({p['email']})")
             else:
-                if not u.employee_id:
-                    u.employee_id = p["emp_id"]
-                if not u.designation:
-                    u.designation = p["designation"]
-                if p["department_id"] and not u.department_id:
+                u.email = p["email"]
+                u.employee_id = p["emp_id"]
+                u.name = p["name"]
+                u.designation = p["designation"]
+                if p["department_id"]:
                     u.department_id = p["department_id"]
-                if not u.phone:
+                if p["phone"]:
                     u.phone = p["phone"]
                 u.is_active = True
                 u.account_status = "active"
@@ -344,22 +345,147 @@ def run_migrations():
 
         db.commit()
 
-        # Step 6: Assign department supervisors to staff
-        maintenance_sup = db.query(User).filter(User.department_id == "maintenance", User.role == "supervisor").first()
-        if maintenance_sup:
-            db.query(User).filter(
-                User.department_id == "maintenance",
-                User.role == "staff",
-                User.supervisor_id == None
-            ).update({User.supervisor_id: maintenance_sup.id}, synchronize_session=False)
+        # Step 7: Department Categories & Multi-Supervisor Standardization (Section 3 & 7)
+        import json
+        from app.models import DepartmentSupervisor
 
-        medical_sup = db.query(User).filter(User.department_id == "medical", User.role == "supervisor").first()
-        if medical_sup:
-            db.query(User).filter(
-                User.department_id == "medical",
-                User.role.in_(["staff", "nurse", "doctor"]),
-                User.supervisor_id == None
-            ).update({User.supervisor_id: medical_sup.id}, synchronize_session=False)
+        DEFAULT_CATEGORIES = {
+            "maintenance": [
+                "Electrical issue",
+                "Plumbing issue",
+                "Air conditioning",
+                "Equipment repair",
+                "General maintenance"
+            ],
+            "nursing": [
+                "Nursing assistance",
+                "Bedside support",
+                "Ward-related service request",
+                "Other approved nursing request"
+            ],
+            "dietitian": [
+                "Diet consultation",
+                "Diet-plan query",
+                "Food-related dietary concern"
+            ],
+            "food_services": [
+                "Meal not received",
+                "Food quality concern",
+                "Incorrect meal",
+                "Other approved food-service request"
+            ],
+            "housekeeping": [
+                "Room cleaning",
+                "Spill cleanup",
+                "Trash disposal",
+                "Linen change",
+                "Disinfection"
+            ],
+            "billing": [
+                "Billing query",
+                "Insurance claim inquiry",
+                "Discharge billing estimate",
+                "Receipt copy"
+            ]
+        }
+
+        # Populate categories for existing and canonical departments
+        all_depts = db.query(Department).all()
+        for d in all_depts:
+            if not d.categories:
+                cats = DEFAULT_CATEGORIES.get(d.id, [
+                    f"{d.name} Service Request",
+                    f"{d.name} Urgent Assistance",
+                    "General Inquiry"
+                ])
+                d.categories = json.dumps(cats)
+
+        # Ensure canonical departments from master prompt exist
+        canonical_prompts = [
+            ("dietitian", "Dietitian", "DIET", "Nutrition and clinical dietary consultation", "HeartPulse"),
+            ("food_services", "Food Services", "FOOD", "Hospital patient meal planning and food delivery", "UtensilsCrossed"),
+        ]
+        for c_id, c_name, c_code, c_desc, c_icon in canonical_prompts:
+            if not db.query(Department).filter(Department.id == c_id).first():
+                new_d = Department(
+                    id=c_id,
+                    name=c_name,
+                    code=c_code,
+                    description=c_desc,
+                    icon=c_icon,
+                    categories=json.dumps(DEFAULT_CATEGORIES.get(c_id, ["General Inquiry"])),
+                    is_active=True
+                )
+                db.add(new_d)
+                logger.info(f"Created canonical department: {c_name} ({c_id})")
+
+        db.flush()
+
+        # Seed illustrative supervisors and staff from master prompt (Section 5)
+        # Supervisors: Mohan, Younus for Maintenance
+        # Staff: Ashif, Sathya, Syed for Maintenance
+        prompt_personnel = [
+            # Supervisors
+            {"email": "mohan.supervisor@careops.hospital", "name": "Mohan", "role": "supervisor", "dept": "maintenance", "emp_id": "EMP-MNT-SUP1", "desig": "Senior Maintenance Supervisor"},
+            {"email": "younus.supervisor@careops.hospital", "name": "Younus", "role": "supervisor", "dept": "maintenance", "emp_id": "EMP-MNT-SUP2", "desig": "Operations Supervisor"},
+            {"email": "dietitian.lead@careops.hospital", "name": "Dr. Sarah Rao", "role": "supervisor", "dept": "dietitian", "emp_id": "EMP-DIE-SUP1", "desig": "Chief Clinical Dietitian"},
+            {"email": "food.lead@careops.hospital", "name": "Chef Anand Kumar", "role": "supervisor", "dept": "food_services", "emp_id": "EMP-FOD-SUP1", "desig": "Food Services Supervisor"},
+            # Staff
+            {"email": "ashif.staff@careops.hospital", "name": "Ashif", "role": "staff", "dept": "maintenance", "emp_id": "EMP-MNT-001", "desig": "HVAC & Electrical Specialist"},
+            {"email": "sathya.staff@careops.hospital", "name": "Sathya", "role": "staff", "dept": "maintenance", "emp_id": "EMP-MNT-002", "desig": "Plumbing & Fixture Specialist"},
+            {"email": "syed.staff@careops.hospital", "name": "Syed", "role": "staff", "dept": "maintenance", "emp_id": "EMP-MNT-003", "desig": "Biomedical Equipment Specialist"},
+        ]
+
+        for p in prompt_personnel:
+            user = db.query(User).filter(or_(User.email == p["email"], User.employee_id == p["emp_id"])).first()
+            if not user:
+                user = User(
+                    email=p["email"],
+                    name=p["name"],
+                    role=p["role"],
+                    department_id=p["dept"],
+                    employee_id=p["emp_id"],
+                    designation=p["desig"],
+                    hashed_password=pw_hash,
+                    account_status="active",
+                    is_active=True
+                )
+                db.add(user)
+                db.flush()
+                logger.info(f"Seeded prompt personnel: {p['name']} ({p['email']}, role={p['role']})")
+            else:
+                user.email = p["email"]
+                user.employee_id = p["emp_id"]
+                user.name = p["name"]
+                user.role = p["role"]
+                user.department_id = p["dept"]
+                user.designation = p["desig"]
+                user.hashed_password = pw_hash
+                user.is_active = True
+                user.account_status = "active"
+                user.failed_login_attempts = 0
+
+        db.flush()
+
+        # Step 8: Sync department_supervisors table
+        desired_links = set()
+        for d in db.query(Department).all():
+            if d.supervisor_id:
+                desired_links.add((d.id, d.supervisor_id))
+
+        supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
+        for s in supervisors:
+            if s.department_id:
+                desired_links.add((s.department_id, s.id))
+
+        for dept_id, user_id in desired_links:
+            existing_rel = db.query(DepartmentSupervisor).filter(
+                DepartmentSupervisor.department_id == dept_id,
+                DepartmentSupervisor.user_id == user_id
+            ).first()
+            if not existing_rel:
+                db.add(DepartmentSupervisor(department_id=dept_id, user_id=user_id))
+                logger.info(f"Linked supervisor #{user_id} to department {dept_id}")
 
         db.commit()
         logger.info("Enterprise IAM and Department standardization completed successfully.")

@@ -58,6 +58,11 @@ export function Sidebar({
   if (userRole === "superadmin") {
     navItems = [
       {
+        id: "overview",
+        label: "Executive Dashboard",
+        icon: LayoutDashboard,
+      },
+      {
         id: "superadmin-admins",
         label: "Admin Accounts",
         icon: UserCheck,
@@ -103,6 +108,7 @@ export function Sidebar({
     ];
   } else if (userRole === "supervisor") {
     navItems = [
+      { id: "overview", label: "Department Dashboard", icon: LayoutDashboard },
       { id: "tickets", label: "Department Tickets", icon: Ticket },
       { id: "my-department", label: "Supervisor Workspace", icon: Briefcase },
       { id: "departments", label: "My Team & Staff", icon: Building2 },
@@ -115,6 +121,7 @@ export function Sidebar({
   } else {
     // Staff
     navItems = [
+      { id: "overview", label: "My Overview", icon: LayoutDashboard },
       { id: "tickets", label: "Assigned Tickets", icon: Ticket },
       { id: "my-department", label: "My Tasks & Evidence", icon: Briefcase },
       { id: "reviews", label: "Patient Feedback", icon: Star },
@@ -123,7 +130,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={`fixed top-0 left-0 bottom-0 z-30 flex flex-col bg-white border-r border-[#E5E9EF] transition-all duration-300 ${
+      className={`fixed top-0 left-0 bottom-0 z-30 flex flex-col glass-surface border-r border-[#E5E9EF] transition-all duration-300 ${
         collapsed ? "w-18" : "w-64"
       }`}
     >
@@ -244,7 +251,7 @@ export function Sidebar({
           {!collapsed && (
             <div className="flex-1 overflow-hidden">
               <div className="text-xs font-black text-[#0F172A] truncate">
-                {currentUser?.name || "Dr. Alistair Vance"}
+                {currentUser?.name || "Hospital User"}
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <span

@@ -235,6 +235,23 @@ def trigger_analysis(
     db.commit()
     db.refresh(job)
 
+    # In-App notification: Notify department supervisors
+    try:
+        from app.services.in_app_notification_service import InAppNotificationService
+        rec_display = str(analysis_data.get("ai_recommendation", "inconclusive")).replace("_", " ").title()
+        InAppNotificationService.notify_department_supervisors(
+            db=db,
+            department_id=ticket.department_id,
+            event_type="AI_VERIFICATION_COMPLETE",
+            title=f"AI Verification Complete: {ticket.ticket_number}",
+            message=f"{ticket.title} (Room {ticket.room_number}) ready for supervisor sign-off. AI recommendation: {rec_display}.",
+            ticket=ticket,
+            destination_link=f"/ai-verify?ticket={ticket.id}",
+            dedup_prefix=f"AI_VERIFY:{job.id}"
+        )
+    except Exception as ne:
+        pass
+
     resp = parse_job_response(job)
     resp["visual_observations"] = analysis_data.get("visual_observations", [])
     resp["before_after_differences"] = analysis_data.get("before_after_differences", [])

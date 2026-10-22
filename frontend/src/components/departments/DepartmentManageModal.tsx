@@ -48,10 +48,29 @@ export function DepartmentManageModal({
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
   const [icon, setIcon] = useState("building-2");
+  const [availableSupervisors, setAvailableSupervisors] = useState<any[]>([]);
+  const [selectedSupervisorIds, setSelectedSupervisorIds] = useState<number[]>([]);
+  const [categoriesText, setCategoriesText] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSupervisors = async () => {
+      try {
+        const sups: any = await api.getSupervisorsList();
+        if (isMounted) setAvailableSupervisors(sups || []);
+      } catch (_) {}
+    };
+    if (isOpen) {
+      loadSupervisors();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (department) {
@@ -60,12 +79,19 @@ export function DepartmentManageModal({
       setCode(department.code);
       setDescription(department.description || "");
       setIcon(department.icon || "building-2");
+      setSelectedSupervisorIds(
+        department.supervisor_ids ||
+          (department.supervisor_id ? [department.supervisor_id] : [])
+      );
+      setCategoriesText(department.categories?.join(", ") || "");
     } else {
       setId("");
       setName("");
       setCode("");
       setDescription("");
       setIcon("building-2");
+      setSelectedSupervisorIds([]);
+      setCategoriesText("");
     }
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -95,6 +121,11 @@ export function DepartmentManageModal({
       return;
     }
 
+    const parsedCategories = categoriesText
+      .split(/[,\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     try {
       setIsSubmitting(true);
       if (isEditMode && department) {
@@ -103,6 +134,8 @@ export function DepartmentManageModal({
           code: trimmedCode,
           description: trimmedDesc,
           icon,
+          supervisor_ids: selectedSupervisorIds,
+          categories: parsedCategories,
         });
         setSuccessMessage(`Department "${trimmedName}" updated successfully.`);
       } else {
@@ -112,6 +145,8 @@ export function DepartmentManageModal({
           code: trimmedCode,
           description: trimmedDesc,
           icon,
+          supervisor_ids: selectedSupervisorIds,
+          categories: parsedCategories,
         });
         setSuccessMessage(`Department "${trimmedName}" created successfully.`);
       }
@@ -270,6 +305,78 @@ export function DepartmentManageModal({
                 );
               })}
             </div>
+          </div>
+
+          {/* Multi-Supervisor Assignment (Section 3 & 5) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-black text-[#0F172A] uppercase tracking-wider">
+                Assigned Department Supervisors
+              </label>
+              <span className="text-[10px] text-[#176B63] font-bold">
+                {selectedSupervisorIds.length} Assigned
+              </span>
+            </div>
+            <p className="text-[11px] text-[#64748B] mb-2">
+              Incoming patient requests route exclusively to these assigned supervisors.
+            </p>
+            <div className="max-h-36 overflow-y-auto p-2 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] space-y-1.5 scrollbar-thin">
+              {availableSupervisors.length === 0 ? (
+                <div className="text-xs text-[#64748B] italic p-2">
+                  No active supervisor accounts registered yet.
+                </div>
+              ) : (
+                availableSupervisors.map((s) => {
+                  const isChecked = selectedSupervisorIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition ${
+                        isChecked
+                          ? "bg-[#E8F3F1] border-[#176B63] text-[#176B63] font-bold"
+                          : "bg-white border-[#E2E8F0] text-[#0F172A] hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSupervisorIds((prev) => [...prev, s.id]);
+                            } else {
+                              setSelectedSupervisorIds((prev) => prev.filter((id) => id !== s.id));
+                            }
+                          }}
+                          className="rounded text-[#176B63] focus:ring-[#176B63]"
+                        />
+                        <span>{s.name}</span>
+                      </div>
+                      <span className="text-[10px] text-[#64748B] font-mono">
+                        {s.designation || s.email}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Department-Specific Request Categories (Section 7) */}
+          <div>
+            <label className="block text-xs font-black text-[#0F172A] uppercase tracking-wider mb-1">
+              Configurable Request Categories
+            </label>
+            <p className="text-[11px] text-[#64748B] mb-1.5">
+              Enter permitted patient request categories separated by commas or new lines.
+            </p>
+            <textarea
+              rows={3}
+              value={categoriesText}
+              onChange={(e) => setCategoriesText(e.target.value)}
+              placeholder="e.g. Electrical issue, Plumbing issue, Air conditioning, Equipment repair, General maintenance"
+              className="w-full px-3.5 py-2 rounded-xl border-2 border-[#CBD5E1] bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#176B63] focus:bg-white leading-relaxed"
+            />
           </div>
 
           {/* Action Buttons */}

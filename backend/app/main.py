@@ -20,7 +20,7 @@ from app.services.storage_service import StorageService
 # Routers
 from app.routers import (
     auth, patient, tickets, evidence, ai_verify,
-    departments, rooms, sla, analytics, audit, staff, system, google_reviews, nps, emails
+    departments, rooms, sla, analytics, audit, staff, system, google_reviews, nps, emails, notifications
 )
 from app.migrations import run_migrations
 
@@ -46,7 +46,7 @@ async def sla_background_worker():
     logger.info("CareOps Persistent SLA Engine initialized.")
     while True:
         try:
-            SLAEngine.run_sla_check_cycle()
+            await asyncio.to_thread(SLAEngine.run_sla_check_cycle)
         except Exception as e:
             logger.error(f"SLA background monitor exception: {e}")
         await asyncio.sleep(settings.SLA_CHECK_INTERVAL_SECONDS)
@@ -139,6 +139,7 @@ app.include_router(google_reviews.router, prefix=settings.API_V1_STR)
 app.include_router(google_reviews.integrations_router, prefix=settings.API_V1_STR)
 app.include_router(nps.router, prefix=settings.API_V1_STR)
 app.include_router(emails.router, prefix=settings.API_V1_STR)
+app.include_router(notifications.router, prefix=settings.API_V1_STR)
 
 @app.get("/health")
 @app.get("/api/health")

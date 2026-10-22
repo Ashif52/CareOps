@@ -38,6 +38,7 @@ import {
   DashboardMetrics,
   AuditLog,
   AIVerificationJob,
+  SimulationAccount,
   setStoredToken,
   getStoredToken,
   clearStoredToken
@@ -58,6 +59,7 @@ export default function CareOpsApp() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [aiQueue, setAiQueue] = useState<AIVerificationJob[]>([]);
+  const [simulationAccounts, setSimulationAccounts] = useState<SimulationAccount[]>([]);
 
   // Modals / Overlays
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
@@ -78,10 +80,11 @@ export default function CareOpsApp() {
   } | null>(null);
 
   // Cross-view ticket filter coordination
-  const [ticketFilterState, setTicketFilterState] = useState<{ status?: string; dept?: string; sla?: string }>({
+  const [ticketFilterState, setTicketFilterState] = useState<{ status?: string; dept?: string; sla?: string; date?: string }>({
     status: "all",
     dept: "all",
     sla: "all",
+    date: undefined,
   });
 
   // Superadmin Database Wipe State
@@ -170,6 +173,8 @@ export default function CareOpsApp() {
         metricsRes,
         auditRes,
         aiQueueRes,
+        simulationRes,
+        meRes,
       ] = await Promise.allSettled([
         api.getTickets(),
         api.getDepartments(),
@@ -179,6 +184,8 @@ export default function CareOpsApp() {
         api.getDashboardMetrics(),
         api.getAuditLogs(),
         api.getVerificationQueue(),
+        api.getSimulationAccounts(),
+        api.getMe(),
       ]);
 
       if (ticketsRes.status === "fulfilled") setTickets(ticketsRes.value);
@@ -189,6 +196,8 @@ export default function CareOpsApp() {
       if (metricsRes.status === "fulfilled") setMetrics(metricsRes.value);
       if (auditRes.status === "fulfilled") setAuditLogs(auditRes.value);
       if (aiQueueRes.status === "fulfilled") setAiQueue(aiQueueRes.value);
+      if (simulationRes.status === "fulfilled") setSimulationAccounts(simulationRes.value);
+      if (meRes.status === "fulfilled" && meRes.value) setCurrentUser(meRes.value);
     } catch (err) {
       console.error("Error refreshing CareOps data:", err);
     } finally {
@@ -577,12 +586,15 @@ export default function CareOpsApp() {
         <Header
           currentTab={currentTab}
           currentUser={currentUser}
+          simulationAccounts={simulationAccounts}
           onSelectRoleUser={handleSelectRoleUser}
           onOpenCreateModal={() => setShowCreateModal(true)}
           onSearch={(q) => console.log("Search query:", q)}
           onRefreshData={loadAllData}
           isRefreshing={isRefreshing}
           onLogout={handleLogout}
+          onSelectTicket={(id) => setSelectedTicketId(id)}
+          onNavigateTab={(tab) => setCurrentTab(tab)}
         />
 
         {/* Real-Time Incoming Patient Complaint Toast Banner */}
@@ -654,11 +666,12 @@ export default function CareOpsApp() {
               metrics={metrics}
               currentUser={currentUser}
               onSelectTicket={(id) => setSelectedTicketId(id)}
-              onViewAllTickets={(filterStatus, deptId, slaFilter) => {
+              onViewAllTickets={(filterStatus, deptId, slaFilter, dateFilter) => {
                 setTicketFilterState({
                   status: filterStatus || "all",
                   dept: deptId || "all",
                   sla: slaFilter || "all",
+                  date: dateFilter || undefined,
                 });
                 setCurrentTab("tickets");
               }}
@@ -680,6 +693,7 @@ export default function CareOpsApp() {
               initialStatusFilter={ticketFilterState.status}
               initialDeptFilter={ticketFilterState.dept}
               initialSlaFilter={ticketFilterState.sla}
+              initialDateFilter={ticketFilterState.date}
             />
           )}
 
@@ -716,6 +730,7 @@ export default function CareOpsApp() {
             <StaffAccessManagementView
               departments={departments}
               currentUser={currentUser}
+              onStaffUpdated={loadAllData}
             />
           )}
 
@@ -846,6 +861,7 @@ export default function CareOpsApp() {
           onCloseTicket={handleCloseTicket}
           onAddNote={handleAddNote}
           onUploadEvidence={handleUploadEvidence}
+          onTicketUpdated={loadAllData}
         />
       )}
 

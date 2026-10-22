@@ -86,16 +86,17 @@ class RealtimeHub:
 
         sent_count = 0
         for queue, meta in target_queues:
-            # Admins, directors, supervisors see all tickets
-            # Staff see tickets for their department, or if unscoped
             staff_dept = meta.get("department_id")
             staff_role = meta.get("role")
 
-            is_authorized = (
-                staff_role in ["admin", "supervisor", "director"]
-                or not staff_dept
-                or staff_dept == dept_id
-            )
+            # Section 4 & 5: Only department supervisors and system administrators receive new incoming requests.
+            # Ordinary staff are NEVER sent new unassigned requests.
+            if staff_role in ["admin", "superadmin", "director"]:
+                is_authorized = True
+            elif staff_role == "supervisor":
+                is_authorized = not staff_dept or staff_dept == dept_id
+            else:
+                is_authorized = False
 
             if is_authorized:
                 try:
@@ -106,14 +107,16 @@ class RealtimeHub:
                 except Exception as e:
                     logger.warning(f"Error publishing ticket_created to staff: {e}")
 
-        logger.info(f"Published ticket_created ({ticket_data.get('ticket_number')}) to {sent_count}/{len(target_queues)} staff connections")
+        logger.info(f"Published ticket_created ({ticket_data.get('ticket_number')}) to {sent_count}/{len(target_queues)} supervisor/admin connections")
 
     async def publish_ticket_updated(self, ticket_data: dict):
         """
         Broadcast ticket status changes (acknowledged, work started, resolved, closed)
-        to both authorized staff workspaces AND patient tracking views!
+        to authorized staff workspaces AND patient tracking views!
+        Section 6: Staff can ONLY receive updates for tasks assigned to them.
         """
         dept_id = ticket_data.get("department_id")
+        assigned_staff_id = ticket_data.get("assigned_staff_id")
         ticket_number = ticket_data.get("ticket_number", "").strip().upper()
 
         event_payload = {
@@ -130,13 +133,20 @@ class RealtimeHub:
 
         sent_staff = 0
         for queue, meta in staff_queues:
+            staff_user_id = meta.get("user_id")
             staff_dept = meta.get("department_id")
             staff_role = meta.get("role")
-            is_authorized = (
-                staff_role in ["admin", "supervisor", "director"]
-                or not staff_dept
-                or staff_dept == dept_id
-            )
+
+            if staff_role in ["admin", "superadmin", "director"]:
+                is_authorized = True
+            elif staff_role == "supervisor":
+                is_authorized = not staff_dept or staff_dept == dept_id
+            elif staff_role == "staff":
+                # Strict Staff Scoping: Staff member sees ONLY their assigned task
+                is_authorized = bool(assigned_staff_id and staff_user_id == assigned_staff_id)
+            else:
+                is_authorized = False
+
             if is_authorized:
                 try:
                     queue.put_nowait(raw_message)

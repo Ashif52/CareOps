@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Wrench,
   Stethoscope,
@@ -41,7 +41,11 @@ import {
   ThumbsUp,
   Star,
   KeyRound,
-  Mail
+  Mail,
+  Video,
+  Film,
+  Image,
+  Plus
 } from "lucide-react";
 import { api, formatTime } from "@/lib/api";
 import { RoomQRPlacardModal } from "@/components/RoomQRPlacardModal";
@@ -62,6 +66,15 @@ interface RoomData {
   token: string;
   is_active: boolean;
   departments?: any[];
+}
+
+export interface AttachmentItem {
+  id: string;
+  mediaType: "PHOTO" | "VIDEO";
+  fileName: string;
+  fileSizeBytes: number;
+  dataBase64: string;
+  previewUrl: string;
 }
 
 export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser }: PatientPortalProps) {
@@ -102,6 +115,14 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
   const [patientEmail, setPatientEmail] = useState<string>(currentUser?.email || "");
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [showAttachmentChooser, setShowAttachmentChooser] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+  const takePhotoInputRef = useRef<HTMLInputElement>(null);
+  const choosePhotoInputRef = useRef<HTMLInputElement>(null);
+  const recordVideoInputRef = useRef<HTMLInputElement>(null);
+  const chooseVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Dedicated Patient Account State
   const [patientView, setPatientView] = useState<"lodge" | "my_tickets" | "profile">("lodge");
@@ -210,12 +231,6 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
     is_eligible_for_feedback?: boolean;
   } | null>(null);
 
-  // Patient Experience Feedback State on Bedside Screen
-  const [selectedEmoji, setSelectedEmoji] = useState<"happy" | "okay" | "unhappy" | null>(null);
-  const [npsScore, setNpsScore] = useState<number | null>(null);
-  const [feedbackComment, setFeedbackComment] = useState("");
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const [showQRModal, setShowQRModal] = useState(false);
 
@@ -310,102 +325,118 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
     };
   }, [submittedTicket?.ticket_number]);
 
-  // Service Request Categories (Canonical Departments: Maintenance, Housekeeping, Linen, Medical, IT)
-  const categories = [
-    {
-      id: "maint-electrical",
-      deptId: "maintenance",
-      deptName: "Maintenance",
-      name: "Electrical & Lighting",
-      icon: Sparkles,
-      description: "Lights flickering, reading lamp, switches, bed power outlets",
-      color: "border-[#176B63] hover:bg-[#E8F3F1]/40",
-      accent: "text-[#176B63] bg-[#E8F3F1]",
-      defaultItems: ["Reading Lamp / Lighting", "Bed Electrical Socket", "Switches", "General Power"],
-    },
-    {
-      id: "maint-climate",
-      deptId: "maintenance",
-      deptName: "Maintenance",
-      name: "Air Conditioning & Climate",
-      icon: Fan,
-      description: "Room too cold, AC not cooling, fan noise, airflow adjustment",
-      color: "border-[#2563EB] hover:bg-[#EFF6FF]/40",
-      accent: "text-[#2563EB] bg-[#EFF6FF]",
-      defaultItems: ["Room Too Cold", "AC Not Cooling", "Fan Noise", "Thermostat Adjustment"],
-    },
-    {
-      id: "maint-plumbing",
-      deptId: "maintenance",
-      deptName: "Maintenance",
-      name: "Plumbing & Restroom",
-      icon: Droplets,
-      description: "Tap leak, flush issue, hot water supply, shower pressure, clogged drain",
-      color: "border-[#0891B2] hover:bg-[#ECFEFF]/40",
-      accent: "text-[#0891B2] bg-[#ECFEFF]",
-      defaultItems: ["Tap Leak", "Hot Water Supply", "Toilet Flush", "Clogged Drain"],
-    },
-    {
-      id: "maint-general",
-      deptId: "maintenance",
-      deptName: "Maintenance",
-      name: "General Maintenance",
-      icon: Wrench,
-      description: "Door latch, window blinds, motorized bed frame, room fixtures",
-      color: "border-[#475569] hover:bg-[#F8FAFC]/40",
-      accent: "text-[#475569] bg-[#F8FAFC]",
-      defaultItems: ["Door Latch / Lock", "Window Blinds", "Motorized Bed Frame", "Furniture Repair"],
-    },
-    {
-      id: "housekeeping-cleaning",
-      deptId: "housekeeping",
-      deptName: "Housekeeping",
-      name: "Housekeeping & Room Sanitization",
-      icon: Sparkles,
-      description: "Floor mopping, dust clearance, bathroom sanitization, waste clearance",
-      color: "border-[#D97706] hover:bg-[#FFFBEB]/40",
-      accent: "text-[#D97706] bg-[#FFFBEB]",
-      defaultItems: ["Floor Mopping / Spill", "Bathroom Sanitization", "Trash Bin Clearance", "Spill Clean-up"],
-    },
-    {
-      id: "linen-change",
-      deptId: "linen",
-      deptName: "Linen",
-      name: "Linen & Bedding",
-      icon: Sparkles,
-      description: "Fresh bed sheets, extra warm blanket, pillow change, clean patient gown",
-      color: "border-[#7C3AED] hover:bg-[#F5F3FF]/40",
-      accent: "text-[#7C3AED] bg-[#F5F3FF]",
-      defaultItems: ["Fresh Bed Sheets", "Extra Warm Blanket", "Pillow Change", "Clean Patient Gown"],
-    },
-    {
-      id: "medical-support",
-      deptId: "medical",
-      deptName: "Medical",
-      name: "Medical Assistance (Non-Emergency)",
-      icon: HeartPulse,
-      description: "Drinking water, routine nursing query, mobility assistance (non-emergency)",
-      color: "border-[#DC2626] hover:bg-[#FEF2F2]/40",
-      accent: "text-[#DC2626] bg-[#FEF2F2]",
-      defaultItems: ["Bed Reclining Help", "Drinking Water Refill", "Routine Nursing Query", "Mobility Assistance"],
-    },
-    {
-      id: "it-tech",
-      deptId: "it",
-      deptName: "IT",
-      name: "IT & Digital Services",
-      icon: HelpCircle,
-      description: "Patient TV / remote, hospital Wi-Fi connectivity, bedside digital screen",
-      color: "border-[#0284C7] hover:bg-[#F0F9FF]/40",
-      accent: "text-[#0284C7] bg-[#F0F9FF]",
-      defaultItems: ["In-Room TV / Remote", "Patient Wi-Fi Connectivity", "Bedside Screen", "Digital Call Panel"],
-    },
-  ];
+  // Canonical / Dynamic Departments and their Permitted Request Categories
+  const DEFAULT_DEPT_CATEGORIES: Record<string, string[]> = {
+    maintenance: [
+      "Electrical issue",
+      "Plumbing issue",
+      "Air conditioning",
+      "Equipment repair",
+      "General maintenance",
+    ],
+    nursing: [
+      "Nursing assistance",
+      "Bedside support",
+      "Ward-related service request",
+      "Other approved nursing request",
+    ],
+    medical: [
+      "Nursing assistance",
+      "Bedside support",
+      "Ward-related service request",
+      "Other approved nursing request",
+    ],
+    dietitian: [
+      "Diet consultation",
+      "Diet-plan query",
+      "Food-related dietary concern",
+    ],
+    food_services: [
+      "Meal not received",
+      "Food quality concern",
+      "Incorrect meal",
+      "Other approved food-service request",
+    ],
+    housekeeping: [
+      "Room cleaning",
+      "Spill cleanup",
+      "Trash disposal",
+      "Linen change",
+      "Disinfection",
+    ],
+    billing: [
+      "Billing query",
+      "Insurance claim inquiry",
+      "Discharge billing estimate",
+      "Receipt copy",
+    ],
+  };
 
-  const handleSelectCategory = (cat: (typeof categories)[0]) => {
-    setSelectedDept(cat.deptId);
-    setCategoryName(cat.name);
-    setTitle(`${cat.name} Issue`);
+  const availableDepartments = useMemo(() => {
+    if (roomData?.departments && roomData.departments.length > 0) {
+      return roomData.departments.map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        code: d.code || d.id.toUpperCase(),
+        description: d.description || `Hospital ${d.name} services`,
+        categories:
+          d.categories && d.categories.length > 0
+            ? d.categories
+            : DEFAULT_DEPT_CATEGORIES[d.id] || ["General Request"],
+      }));
+    }
+    return [
+      {
+        id: "maintenance",
+        name: "Maintenance",
+        code: "MNT",
+        description: "Electrical, plumbing, AC & equipment repair",
+        categories: DEFAULT_DEPT_CATEGORIES.maintenance,
+      },
+      {
+        id: "nursing",
+        name: "Nursing",
+        code: "NUR",
+        description: "Bedside nursing assistance & clinical care support",
+        categories: DEFAULT_DEPT_CATEGORIES.nursing,
+      },
+      {
+        id: "dietitian",
+        name: "Dietitian",
+        code: "DIET",
+        description: "Diet consultations, diet-plans & dietary restrictions",
+        categories: DEFAULT_DEPT_CATEGORIES.dietitian,
+      },
+      {
+        id: "food_services",
+        name: "Food Services",
+        code: "FOOD",
+        description: "Patient meal delivery, food quality & meal timing",
+        categories: DEFAULT_DEPT_CATEGORIES.food_services,
+      },
+      {
+        id: "housekeeping",
+        name: "Housekeeping",
+        code: "HSK",
+        description: "Room cleaning, spills, trash & sanitization",
+        categories: DEFAULT_DEPT_CATEGORIES.housekeeping,
+      },
+      {
+        id: "billing",
+        name: "Billing",
+        code: "BIL",
+        description: "Patient hospital billing, insurance & receipts",
+        categories: DEFAULT_DEPT_CATEGORIES.billing,
+      },
+    ];
+  }, [roomData?.departments]);
+
+  const [activeDeptId, setActiveDeptId] = useState<string>("maintenance");
+
+  const handleSelectCategory = (deptId: string, category: string) => {
+    setSelectedDept(deptId);
+    setCategoryName(category);
+    setTitle(`${category} Issue`);
     setStep("form");
   };
 
@@ -603,21 +634,64 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
     }
   };
 
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleFileAttachment = (e: React.ChangeEvent<HTMLInputElement>, mediaType: "PHOTO" | "VIDEO") => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert("Photo must be less than 10MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setPhotoBase64(base64);
-        setPhotoPreview(base64);
-      };
-      reader.readAsDataURL(file);
+    e.target.value = "";
+    if (!file) return;
+
+    if (attachments.length >= 3) {
+      setAttachmentError("Maximum of 3 attachments allowed per request.");
+      return;
     }
+
+    const MAX_SIZE = 25 * 1024 * 1024; // 25MB
+    if (file.size > MAX_SIZE) {
+      setAttachmentError(`File "${file.name}" exceeds the 25MB limit. Please choose a smaller file.`);
+      return;
+    }
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const allowedPhotoExts = ["jpg", "jpeg", "png", "webp", "gif"];
+    const allowedVideoExts = ["mp4", "webm", "mov", "m4v", "ogg"];
+    const allowed =
+      mediaType === "PHOTO"
+        ? allowedPhotoExts.includes(ext) || file.type.startsWith("image/")
+        : allowedVideoExts.includes(ext) || file.type.startsWith("video/");
+
+    if (!allowed) {
+      setAttachmentError(
+        `Unsupported format for ${mediaType.toLowerCase()}. Allowed: ${
+          mediaType === "PHOTO" ? "JPG, PNG, WebP, GIF" : "MP4, WebM, QuickTime (MOV)"
+        }.`
+      );
+      return;
+    }
+
+    setAttachmentError(null);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      const newAtt: AttachmentItem = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        mediaType,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        dataBase64: base64,
+        previewUrl: base64,
+      };
+      setAttachments((prev) => [...prev, newAtt]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
   // Submit Complaint with Idempotency Protection
@@ -657,7 +731,13 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
         voice_recording_base64: audioBase64 || undefined,
         voice_transcription: transcription || undefined,
         patient_contact: normalizedPhone,
-        photo_base64: photoBase64 || undefined,
+        photo_base64: attachments.find((a) => a.mediaType === "PHOTO")?.dataBase64 || photoBase64 || undefined,
+        attachments: attachments.map((a) => ({
+          media_type: a.mediaType,
+          file_name: a.fileName,
+          data_base64: a.dataBase64,
+          file_size_bytes: a.fileSizeBytes,
+        })),
         patient_email: trimmedEmail ? trimmedEmail.toLowerCase() : (currentUser?.email || undefined),
         idempotency_key: idempotencyKey,
       });
@@ -682,33 +762,6 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
     }
   };
 
-  const handleFeedbackSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEmoji) {
-      alert("Please select one of the satisfaction emojis (Unhappy, Okay, or Happy).");
-      return;
-    }
-    if (!submittedTicket?.id) {
-      alert("Ticket details are loading. Please wait a moment.");
-      return;
-    }
-
-    setIsSubmittingFeedback(true);
-    try {
-      await api.submitNPSFeedback({
-        ticket_id: submittedTicket.id,
-        tracking_token: submittedTicket.tracking_token || undefined,
-        emoji_rating: selectedEmoji,
-        nps_score: npsScore !== null ? npsScore : undefined,
-        feedback_comment: feedbackComment.trim() || undefined,
-      });
-      setFeedbackSubmitted(true);
-    } catch (err: any) {
-      alert(`Failed to record feedback: ${err.message || err}`);
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
-  };
 
   return (
     <div className="min-h-full bg-[#F7F8FA] flex flex-col justify-between max-w-xl mx-auto shadow-2xl relative">
@@ -757,22 +810,6 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
 
       {/* Main Content Pane */}
       <main className="flex-1 p-5 overflow-y-auto space-y-5">
-        {/* CRITICAL MEDICAL EMERGENCY WARNING BANNER (Always Visible) */}
-        <div className="p-3.5 rounded-2xl bg-[#FEF2F2] border-2 border-[#FCA5A5] flex items-start gap-3 shadow-xs">
-          <div className="p-2 rounded-xl bg-[#EF4444] text-white shrink-0 mt-0.5">
-            <AlertTriangle className="h-5 w-5" />
-          </div>
-          <div className="space-y-1 text-xs">
-            <strong className="text-[#991B1B] font-black uppercase tracking-wide block">
-              Medical Emergency Warning
-            </strong>
-            <p className="text-[#7F1D1D] leading-relaxed">
-              For acute chest pain, difficulty breathing, or urgent medical deterioration,{" "}
-              <strong>press the RED Nurse Call button</strong> on your bed rail or notify nursing staff immediately.
-              This service portal is for facility, room maintenance, and non-emergency requests only.
-            </p>
-          </div>
-        </div>
 
         {/* LOADING & QR ERROR STATES */}
         {isValidatingQR ? (
@@ -1050,71 +1087,104 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
             {/* VIEW 3: LODGE SERVICE REQUEST FLOW (Original Flow) */}
             {patientView === "lodge" && (
               <>
-                {/* STEP 1: CATEGORY SELECTION (Prefilled Room Location) */}
+                {/* STEP 1: DEPARTMENT & CATEGORY SELECTION */}
                 {step === "categories" && (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     {/* Verified Room Location Card */}
-                <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-[#176B63] uppercase tracking-wider">
-                      Verified Room Location
-                    </span>
-                    <span className="text-[10px] font-mono text-[#176B63] bg-white px-2 py-0.5 rounded-md border border-[#A7D7D1]">
-                      {roomData?.token || currentToken}
-                    </span>
-                  </div>
-                  <h2 className="text-base font-black text-[#0F172A]">
-                    {roomData ? `${roomData.room_number} • ${roomData.wing}` : "Room 204 • East Wing"}
-                  </h2>
-                  <p className="text-[11px] text-[#475569]">
-                    {roomData?.floor || "Floor 2"} • Metropolitan General Hospital
-                  </p>
-                </div>
+                    <div className="p-4 rounded-2xl bg-[#E8F3F1] border-2 border-[#A7D7D1] space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-[#176B63] uppercase tracking-wider">
+                          Verified Room Location
+                        </span>
+                        <span className="text-[10px] font-mono text-[#176B63] bg-white px-2 py-0.5 rounded-md border border-[#A7D7D1]">
+                          {roomData?.token || currentToken}
+                        </span>
+                      </div>
+                      <h2 className="text-base font-black text-[#0F172A]">
+                        {roomData ? `${roomData.room_number} • ${roomData.wing}` : "Room 204 • East Wing"}
+                      </h2>
+                      <p className="text-[11px] text-[#475569]">
+                        {roomData?.floor || "Floor 2"} • Metropolitan General Hospital
+                      </p>
+                    </div>
 
-                <div className="pb-1 border-b border-[#E2E8F0]">
-                  <h2 className="text-base font-black text-[#0F172A]">
-                    How Can We Assist You?
-                  </h2>
-                  <p className="text-xs text-[#64748B]">
-                    Select a hospital service category below. It routes directly to the on-duty staff.
-                  </p>
-                </div>
+                    <div className="pb-1 border-b border-[#E2E8F0]">
+                      <h2 className="text-base font-black text-[#0F172A]">
+                        Select Department & Service Request
+                      </h2>
+                      <p className="text-xs text-[#64748B]">
+                        Requests are routed directly and exclusively to the selected department's supervisors.
+                      </p>
+                    </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {categories.map((cat) => {
-                    const Icon = cat.icon;
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => handleSelectCategory(cat)}
-                        className={`text-left p-4 rounded-3xl bg-white border-2 border-[#CBD5E1] hover:border-[#176B63] shadow-xs hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer ${cat.color}`}
-                      >
+                    {/* Department Select Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                      {availableDepartments.map((dept: any) => (
+                        <button
+                          key={dept.id}
+                          type="button"
+                          onClick={() => setActiveDeptId(dept.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                            activeDeptId === dept.id
+                              ? "bg-[#176B63] text-white shadow-xs"
+                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          {dept.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Active Department Details & Permitted Categories */}
+                    {(() => {
+                      const currentDept =
+                        availableDepartments.find((d: any) => d.id === activeDeptId) ||
+                        availableDepartments[0];
+                      if (!currentDept) return null;
+                      return (
                         <div className="space-y-3">
-                          <div
-                            className={`h-10 w-10 rounded-2xl flex items-center justify-center ${cat.accent}`}
-                          >
-                            <Icon className="h-5 w-5" />
+                          <div className="p-3 bg-white rounded-2xl border border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-black text-[#0F172A]">
+                                {currentDept.name} Department
+                              </h3>
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#EDF7F2] text-[#16805D]">
+                                {currentDept.code}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#64748B] mt-0.5">{currentDept.description}</p>
                           </div>
-                          <div>
-                            <h3 className="font-bold text-sm text-[#0F172A] group-hover:text-[#176B63] transition-colors">
-                              {cat.name}
-                            </h3>
-                            <p className="text-[11px] text-[#64748B] mt-1 leading-relaxed">
-                              {cat.description}
-                            </p>
-                          </div>
-                        </div>
 
-                        <div className="pt-3 mt-3 border-t border-[#F1F5F9] flex items-center justify-between text-[11px] font-bold text-[#176B63]">
-                          <span>Select Issue</span>
-                          <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
+                          <div className="space-y-2">
+                            <span className="text-xs font-bold text-slate-700 block">
+                              Select Issue Category:
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {currentDept.categories.map((cat: string, idx: number) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleSelectCategory(currentDept.id, cat)}
+                                  className="text-left p-3.5 rounded-2xl bg-white border-2 border-slate-200 hover:border-[#176B63] hover:shadow-xs transition flex items-center justify-between group cursor-pointer"
+                                >
+                                  <div>
+                                    <h4 className="text-xs font-bold text-[#0F172A] group-hover:text-[#176B63] transition-colors">
+                                      {cat}
+                                    </h4>
+                                    <span className="text-[10px] text-slate-400">
+                                      {currentDept.name} Service
+                                    </span>
+                                  </div>
+                                  <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#176B63] group-hover:translate-x-0.5 transition" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      );
+                    })()}
+                  </div>
+                )}
 
             {/* STEP 3: COMPLAINT FORM */}
             {step === "form" && (
@@ -1279,42 +1349,118 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
                   )}
                 </div>
 
-                {/* Photo Attachment */}
-                <div className="p-3.5 rounded-2xl bg-white border-2 border-[#CBD5E1] space-y-2">
+                {/* Photo & Video Attachments */}
+                <div className="p-3.5 rounded-2xl bg-white border-2 border-[#CBD5E1] space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#0F172A]">Optional Photo Attachment</span>
-                    {photoPreview && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhotoBase64(null);
-                          setPhotoPreview(null);
-                        }}
-                        className="text-[11px] text-[#DC2626] font-bold hover:underline"
-                      >
-                        Remove Photo
-                      </button>
+                    <div>
+                      <span className="text-xs font-bold text-[#0F172A]">Photo &amp; Video Attachments</span>
+                      <p className="text-[11px] text-[#64748B]">Optional media evidence (up to 3 files, max 25MB each)</p>
+                    </div>
+                    {attachments.length > 0 && (
+                      <span className="text-[11px] font-bold text-[#176B63] bg-[#E8F3F1] px-2 py-0.5 rounded-full">
+                        {attachments.length}/3 attached
+                      </span>
                     )}
                   </div>
 
-                  {!photoPreview ? (
-                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-dashed-2 border-[#CBD5E1] hover:border-[#176B63] bg-[#F8FAFC] hover:bg-white cursor-pointer text-xs text-[#64748B] transition-all">
-                      <Camera className="h-5 w-5 text-[#176B63]" />
-                      <span>Take a photo or upload from camera gallery</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handlePhotoCapture}
-                        className="hidden"
-                      />
-                    </label>
-                  ) : (
-                    <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-[#CBD5E1]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  {attachmentError && (
+                    <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>{attachmentError}</span>
                     </div>
                   )}
+
+                  {/* List of current attachments */}
+                  {attachments.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      {attachments.map((att) => (
+                        <div
+                          key={att.id}
+                          className="flex items-center gap-2 p-2 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] relative group"
+                        >
+                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-black/5 shrink-0 flex items-center justify-center border border-[#E2E8F0]">
+                            {att.mediaType === "PHOTO" ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={att.previewUrl} alt={att.fileName} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-blue-50 text-blue-600">
+                                <Video className="h-5 w-5" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0 pr-6">
+                            <p className="text-xs font-semibold text-[#0F172A] truncate" title={att.fileName}>
+                              {att.fileName}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                  att.mediaType === "PHOTO"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-blue-100 text-blue-800"
+                                }`}
+                              >
+                                {att.mediaType}
+                              </span>
+                              <span className="text-[11px] text-[#64748B]">{formatFileSize(att.fileSizeBytes)}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(att.id)}
+                            className="absolute right-2 top-2 p-1 text-[#94A3B8] hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Remove attachment"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add button (opens chooser modal) */}
+                  {attachments.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAttachmentChooser(true)}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-[#CBD5E1] hover:border-[#176B63] bg-[#F8FAFC] hover:bg-white text-xs font-semibold text-[#176B63] transition-all cursor-pointer"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Add Photo or Video</span>
+                    </button>
+                  )}
+
+                  {/* Hidden inputs triggered by chooser */}
+                  <input
+                    ref={takePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => handleFileAttachment(e, "PHOTO")}
+                    className="hidden"
+                  />
+                  <input
+                    ref={choosePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileAttachment(e, "PHOTO")}
+                    className="hidden"
+                  />
+                  <input
+                    ref={recordVideoInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    onChange={(e) => handleFileAttachment(e, "VIDEO")}
+                    className="hidden"
+                  />
+                  <input
+                    ref={chooseVideoInputRef}
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => handleFileAttachment(e, "VIDEO")}
+                    className="hidden"
+                  />
                 </div>
 
                 {/* Patient Contact Information: Mobile Phone & Email Address */}
@@ -1711,185 +1857,52 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
                   </div>
                 </div>
 
-                {/* Staff Recognition & Positive Feedback Card (when completed or closed) */}
+                {/* Issue-Resolved Confirmation Card (Section 8) */}
                 {(submittedTicket.ready_for_feedback ||
                   ["closed", "work_completed", "resolution_submitted"].includes(submittedTicket.status)) && (
-                  <div className="bg-white rounded-3xl border-2 border-[#176B63] p-5 shadow-sm space-y-4 text-left">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-[#176B63]" />
-                      <h3 className="text-sm font-black text-[#0F172A]">
-                        How was your hospital service experience?
-                      </h3>
+                  <div className="bg-white rounded-3xl border-2 border-[#16805D] p-5 shadow-xs space-y-3 text-left">
+                    <div className="flex items-center gap-2.5 text-[#16805D]">
+                      <div className="p-2 rounded-xl bg-[#EDF7F2]">
+                        <CheckCircle2 className="h-5 w-5 text-[#16805D]" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-[#0F172A]">
+                          Your request has been resolved.
+                        </h3>
+                        <span className="text-[11px] font-mono text-[#16805D] font-bold">
+                          Reference: {submittedTicket.ticket_number}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Staff Recognition & Care Standards Card */}
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F8FAFC] to-[#EEF4FD] border-2 border-[#BFDBFE] space-y-3 shadow-xs">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <div className="h-12 w-12 rounded-2xl bg-[#176B63] text-white flex items-center justify-center font-black text-sm border-2 border-[#0F4F48] shadow-xs">
-                            {submittedTicket.assigned_staff_name
-                              ? submittedTicket.assigned_staff_name
-                                  .split(" ")
-                                  .map((n: string) => n[0])
-                                  .join("")
-                                  .slice(0, 2)
-                              : "ST"}
-                          </div>
-                          <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-[#16805D] border-2 border-white rounded-full flex items-center justify-center text-[9px] text-white font-bold">
-                            ✓
-                          </span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-black text-[#0F172A]">
-                              {submittedTicket.assigned_staff_name || "Dedicated Hospital Care Specialist"}
-                            </h4>
-                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-[#EDF7F2] text-[#16805D] border border-[#A6E1CE]">
-                              Dedicated Care
-                            </span>
-                          </div>
-                          <p className="text-xs font-semibold text-[#64748B]">
-                            {submittedTicket.assigned_staff_designation || `${submittedTicket.department} Team Specialist`}
+                    <div className="p-3.5 rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] space-y-2 text-xs">
+                      <div className="flex justify-between text-[#64748B]">
+                        <span>Department:</span>
+                        <span className="font-bold text-[#0F172A] capitalize">
+                          {submittedTicket.department || selectedDept}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[#64748B]">
+                        <span>Service Category:</span>
+                        <span className="font-semibold text-[#0F172A]">
+                          {submittedTicket.category || categoryName}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[#64748B]">
+                        <span>Location:</span>
+                        <span className="font-mono text-[#0F172A]">
+                          {submittedTicket.room_number || "Room Location"}
+                        </span>
+                      </div>
+                      {submittedTicket.resolution_summary && (
+                        <div className="pt-2 border-t border-[#E2E8F0] space-y-1">
+                          <span className="font-bold text-[#0F172A] block">Completion Summary:</span>
+                          <p className="text-[#475569] leading-relaxed">
+                            {submittedTicket.resolution_summary}
                           </p>
                         </div>
-                      </div>
-
-                      {/* Summary of diligence & accomplishment */}
-                      <div className="bg-white p-3 rounded-xl border border-[#CBD5E1] space-y-1.5 text-xs">
-                        <div className="flex items-center gap-1.5 text-[#16805D] font-bold text-[11px] uppercase tracking-wide">
-                          <Sparkles className="h-3.5 w-3.5" />
-                          <span>Work Completed & Hospital Quality Standards</span>
-                        </div>
-                        <p className="text-[#334155] font-medium leading-relaxed">
-                          {submittedTicket.resolution_summary
-                            ? submittedTicket.resolution_summary
-                            : `Attended promptly to your ${submittedTicket.category || "service"} request at ${submittedTicket.room_number}, completed all safety tests, and ensured clean handover.`}
-                        </p>
-                        <div className="pt-1.5 flex flex-wrap gap-1.5 text-[10px] font-bold text-[#475569]">
-                          <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Attended On-Time</span>
-                          <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ High Hygiene & Safety Protocol</span>
-                          <span className="bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">✓ Dignified Patient Care Assured</span>
-                        </div>
-                      </div>
-
-                      <p className="text-[11.5px] font-semibold text-[#1E40AF] leading-snug">
-                        Our frontline team works hard every day to care for your comfort and dignity. If you are satisfied with {submittedTicket.assigned_staff_name ? `${submittedTicket.assigned_staff_name}'s` : "our staff's"} prompt service, please share a positive rating below to recognize their dedication!
-                      </p>
+                      )}
                     </div>
-
-                    {feedbackSubmitted ? (
-                      <div className="p-4 rounded-xl bg-[#EDF7F2] border border-[#A6E1CE] text-[#16805D] text-xs font-semibold text-center space-y-1">
-                        <CheckCircle2 className="h-6 w-6 mx-auto" />
-                        <p className="text-sm font-bold">Thank you for your valuable feedback!</p>
-                        <p className="text-[11px] text-[#16805D]/80">
-                          Your response helps us continually recognize staff and deliver dignified patient care.
-                        </p>
-                      </div>
-                    ) : (
-                      <form onSubmit={handleFeedbackSubmit} className="space-y-4 text-xs">
-                        {/* 3 Emoji Buttons */}
-                        <div className="space-y-1.5">
-                          <label className="text-[#344054] font-semibold block">
-                            Overall Satisfaction: <span className="text-[#DC2626]">*</span>
-                          </label>
-                          <div className="grid grid-cols-3 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEmoji("unhappy")}
-                              className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
-                                selectedEmoji === "unhappy"
-                                  ? "bg-[#FEF3F2] border-[#DC2626] text-[#DC2626] font-bold"
-                                  : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
-                              }`}
-                            >
-                              <span className="text-2xl">😞</span>
-                              <span className="text-xs">Unhappy</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEmoji("okay")}
-                              className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
-                                selectedEmoji === "okay"
-                                  ? "bg-[#FEF7EC] border-[#F79009] text-[#B54708] font-bold"
-                                  : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
-                              }`}
-                            >
-                              <span className="text-2xl">😐</span>
-                              <span className="text-xs">Okay</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEmoji("happy")}
-                              className={`p-3 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
-                                selectedEmoji === "happy"
-                                  ? "bg-[#EDF7F2] border-[#16805D] text-[#16805D] font-bold"
-                                  : "bg-[#F8F9FA] border-[#E5E9EF] text-[#667085] hover:bg-[#F2F4F7]"
-                              }`}
-                            >
-                              <span className="text-2xl">😊</span>
-                              <span className="text-xs">Happy</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Optional NPS (0 to 10) */}
-                        <div className="space-y-1.5 pt-1">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[#344054] font-semibold">
-                              Likelihood to recommend (0 = Unlikely, 10 = Extremely Likely):
-                            </label>
-                            {npsScore !== null && (
-                              <span className="font-bold text-[#176B63] font-mono">{npsScore} / 10</span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between gap-1 overflow-x-auto pb-1">
-                            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
-                              <button
-                                key={score}
-                                type="button"
-                                onClick={() => setNpsScore(score)}
-                                className={`flex-1 min-w-[28px] h-8 rounded-lg font-mono text-xs font-bold transition cursor-pointer ${
-                                  npsScore === score
-                                    ? score >= 9
-                                      ? "bg-[#16805D] text-white"
-                                      : score >= 7
-                                      ? "bg-[#F79009] text-white"
-                                      : "bg-[#DC2626] text-white"
-                                    : "bg-[#F8F9FA] border border-[#E5E9EF] text-[#475467] hover:bg-[#EEF4FD]"
-                                }`}
-                              >
-                                {score}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Optional Comment */}
-                        <div className="space-y-1 pt-1">
-                          <label className="text-[#344054] font-semibold block">
-                            Additional Comments (Optional):
-                          </label>
-                          <textarea
-                            value={feedbackComment}
-                            onChange={(e) => setFeedbackComment(e.target.value)}
-                            placeholder="Tell us what you liked about the technician's care or what we can improve..."
-                            rows={3}
-                            className="w-full p-3 rounded-xl border border-[#CBD5E1] bg-white text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#176B63]"
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={isSubmittingFeedback || !selectedEmoji}
-                          className="w-full py-3.5 bg-[#176B63] hover:bg-[#10574F] text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-[#176B63]/20 disabled:opacity-50"
-                        >
-                          <Send className="h-3.5 w-3.5" />
-                          <span>{isSubmittingFeedback ? "Recording Feedback..." : "Submit Experience Rating"}</span>
-                        </button>
-                      </form>
-                    )}
                   </div>
                 )}
 
@@ -1912,6 +1925,7 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
                       resetRecording();
                       setPhotoBase64(null);
                       setPhotoPreview(null);
+                      setAttachments([]);
                       setIdempotencyKey(`idem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
                     }}
                     className="flex-1 py-3 rounded-2xl border-2 border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-xs font-bold text-[#0F172A] transition-all cursor-pointer"
@@ -1931,6 +1945,109 @@ export function PatientPortal({ onClose, initialRoomToken, allRooms, currentUser
       <footer className="p-4 border-t border-[#E2E8F0] bg-white text-center text-[11px] text-[#64748B]">
         <span>Happy Care Hospital Dignity & Service Assurance • Zero Patient App Download Required</span>
       </footer>
+
+      {/* Attachment Chooser Modal */}
+      {showAttachmentChooser && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
+              <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                <Camera className="h-4 w-4 text-[#176B63]" />
+                <span>Add Photo or Video</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAttachmentChooser(false)}
+                className="p-1 rounded-lg text-[#64748B] hover:text-[#0F172A] hover:bg-gray-100 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#64748B]">
+              Attach media evidence to help hospital technicians diagnose and resolve your request quickly.
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAttachmentChooser(false);
+                  takePhotoInputRef.current?.click();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#CBD5E1] hover:border-[#176B63] hover:bg-[#F0F7F6] text-left transition-all group cursor-pointer"
+              >
+                <div className="p-2 rounded-lg bg-emerald-50 text-[#176B63] group-hover:bg-[#176B63] group-hover:text-white transition-colors">
+                  <Camera className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0F172A]">Take Photo</div>
+                  <div className="text-[11px] text-[#64748B]">Use device camera (rear camera)</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAttachmentChooser(false);
+                  choosePhotoInputRef.current?.click();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#CBD5E1] hover:border-[#176B63] hover:bg-[#F0F7F6] text-left transition-all group cursor-pointer"
+              >
+                <div className="p-2 rounded-lg bg-emerald-50 text-[#176B63] group-hover:bg-[#176B63] group-hover:text-white transition-colors">
+                  <Image className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0F172A]">Choose Photo</div>
+                  <div className="text-[11px] text-[#64748B]">Select image from gallery / files</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAttachmentChooser(false);
+                  recordVideoInputRef.current?.click();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#CBD5E1] hover:border-[#176B63] hover:bg-[#F0F7F6] text-left transition-all group cursor-pointer"
+              >
+                <div className="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <Video className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0F172A]">Record Video</div>
+                  <div className="text-[11px] text-[#64748B]">Record short video clip with camera</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAttachmentChooser(false);
+                  chooseVideoInputRef.current?.click();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#CBD5E1] hover:border-[#176B63] hover:bg-[#F0F7F6] text-left transition-all group cursor-pointer"
+              >
+                <div className="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <Film className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0F172A]">Choose Video</div>
+                  <div className="text-[11px] text-[#64748B]">Select existing video from device</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAttachmentChooser(false)}
+                className="w-full py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-semibold text-[#64748B] hover:bg-gray-100 transition-colors mt-1 cursor-pointer text-center"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scannable Room QR Placard Modal */}
       {showQRModal && (

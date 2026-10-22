@@ -29,12 +29,13 @@ async def upload_evidence(
     if stage not in ["before", "after"]:
         raise HTTPException(status_code=400, detail="Evidence stage must be 'before' or 'after'")
         
-    rel_url, file_hash, file_size = StorageService.save_upload_file(file, subfolder=f"ticket_{ticket_id}")
+    rel_url, file_hash, file_size, det_type = StorageService.save_upload_file(file, subfolder=f"ticket_{ticket_id}")
+    final_media_type = det_type or media_type or "image"
     
     evidence = Evidence(
         ticket_id=ticket.id,
         stage=stage,
-        media_type=media_type,
+        media_type=final_media_type,
         file_url=rel_url,
         file_size_bytes=file_size,
         file_hash=file_hash,
