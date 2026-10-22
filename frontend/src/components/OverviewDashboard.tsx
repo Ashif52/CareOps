@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Inbox,
   Clock,
@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   ChevronRight,
+  ChevronDown,
+  Check,
   Wrench,
   Stethoscope,
   Bed,
@@ -61,9 +63,22 @@ export function OverviewDashboard({
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(initialMetrics);
   const [timeframe, setTimeframe] = useState<"24h" | "7d" | "30d" | "90d">("7d");
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("all");
+  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+  const deptDropdownRef = useRef<HTMLDivElement>(null);
   const [isLoadingTimeframe, setIsLoadingTimeframe] = useState(false);
   const [hoveredTrend, setHoveredTrend] = useState<any | null>(null);
   const [activeChartTab, setActiveChartTab] = useState<"volume" | "depts" | "status" | "sla" | "resolution" | "workload" | "trends">("volume");
+
+  // Close department dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (deptDropdownRef.current && !deptDropdownRef.current.contains(e.target as Node)) {
+        setIsDeptDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Keep metrics in sync when initialMetrics changes
   useEffect(() => {
@@ -281,12 +296,12 @@ export function OverviewDashboard({
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-7 space-y-6 max-w-7xl mx-auto">
+    <div className="w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 space-y-8">
       {/* Role-Specific Header Banner with Restrained Glassmorphism */}
-      <div className="glass-surface rounded-3xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border border-white/60 shadow-xs">
+      <div className="glass-surface rounded-3xl p-6 sm:p-7 flex flex-col md:flex-row md:items-center justify-between gap-5 border border-white/60 shadow-xs">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#176B63] text-white">
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-[#176B63] text-white">
               {userRole === "superadmin"
                 ? "System Executive View"
                 : userRole === "supervisor"
@@ -296,13 +311,13 @@ export function OverviewDashboard({
                 : "Hospital Operations HQ"}
             </span>
             {system_health && (
-              <span className="text-[10px] font-bold text-[#16805D] flex items-center gap-1 bg-[#EDF7F2] px-2 py-0.5 rounded-full">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#16805D] animate-ping" />
+              <span className="text-xs font-bold text-[#16805D] flex items-center gap-1.5 bg-[#EDF7F2] px-2.5 py-1 rounded-full">
+                <span className="h-2 w-2 rounded-full bg-[#16805D] animate-ping" />
                 Live Network Sync
               </span>
             )}
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-[#0F172A] tracking-tight">
+          <h1 className="text-2xl sm:text-3xl lg:text-3.5xl font-black text-[#0F172A] tracking-tight">
             {userRole === "superadmin"
               ? "Organization-Wide Operations & Governance"
               : userRole === "supervisor"
@@ -311,43 +326,117 @@ export function OverviewDashboard({
               ? "Personal Assigned Work & Tasks"
               : "Hospital Operations & Task Analytics"}
           </h1>
-          <p className="text-xs text-[#475569] font-medium mt-0.5">
+          <p className="text-sm sm:text-base text-[#475569] font-medium mt-1">
             {userRole === "superadmin"
               ? "Real-time system telemetry, cross-department SLA performance, and compliance metrics."
               : userRole === "supervisor"
               ? "Manage incoming requests, monitor staff workload, and approve completed resolutions."
-              : "Live database metrics, SLA tracking, and operational throughput."}
+              : "Live database metrics, SLA tracking, and operational throughput across hospital care units."}
           </p>
         </div>
 
         {/* Global Controls: Timeframe Filter & Department Selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Department Filter (Admin & Super Admin only) */}
-          {(userRole === "admin" || userRole === "superadmin") && chartDepts.length > 1 && (
-            <div className="relative">
-              <select
-                value={selectedDeptFilter}
-                onChange={(e) => handleDeptFilterChange(e.target.value)}
-                className="pl-3 pr-8 py-1.5 text-xs font-bold text-[#0F172A] bg-white/80 border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#176B63] transition-all cursor-pointer shadow-xs"
-              >
-                <option value="all">All Departments</option>
-                {chartDepts.map((d) => (
-                  <option key={d.department_id} value={d.department_id}>
-                    {d.department_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Custom Apple-Style Glassmorphic Department Dropdown */}
+          {(userRole === "admin" || userRole === "superadmin") && chartDepts.length > 1 && (() => {
+            const selectedDeptObj = chartDepts.find((d) => d.department_id === selectedDeptFilter);
+            const selectedDeptLabel = selectedDeptFilter === "all" ? "All Departments" : (selectedDeptObj?.department_name || selectedDeptFilter);
+            return (
+              <div className="relative" ref={deptDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+                  disabled={isLoadingTimeframe}
+                  className="bg-white/90 hover:bg-white text-slate-800 border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 text-xs sm:text-[13px] font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer group"
+                  aria-expanded={isDeptDropdownOpen}
+                  aria-haspopup="listbox"
+                >
+                  <div className="h-5 w-5 rounded-md bg-[#176B63]/10 text-[#176B63] flex items-center justify-center shrink-0">
+                    <Building2 className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="truncate max-w-[120px] sm:max-w-[170px] text-left">
+                    {selectedDeptLabel}
+                  </span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${
+                      isDeptDropdownOpen ? "rotate-180 text-[#176B63]" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Dropdown Menu Popover */}
+                {isDeptDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-60 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-[0_12px_36px_rgba(15,23,42,0.12)] p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-0.5">
+                    <div className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
+                      <span>Department Filter</span>
+                      <span className="text-[#176B63] font-bold">{chartDepts.length} units</span>
+                    </div>
+
+                    {/* All Departments Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleDeptFilterChange("all");
+                        setIsDeptDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedDeptFilter === "all"
+                          ? "bg-[#176B63]/10 text-[#176B63]"
+                          : "text-slate-700 hover:bg-slate-100/70"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${selectedDeptFilter === "all" ? "bg-[#176B63]" : "bg-slate-300"}`} />
+                        <span>All Departments</span>
+                      </div>
+                      {selectedDeptFilter === "all" && <Check className="h-3.5 w-3.5 text-[#176B63]" />}
+                    </button>
+
+                    {/* Individual Department Options */}
+                    <div className="max-h-56 overflow-y-auto space-y-0.5 scrollbar-thin pt-0.5">
+                      {chartDepts.map((d) => {
+                        const isSelected = selectedDeptFilter === d.department_id;
+                        return (
+                          <button
+                            key={d.department_id}
+                            type="button"
+                            onClick={() => {
+                              handleDeptFilterChange(d.department_id);
+                              setIsDeptDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-[#176B63]/10 text-[#176B63]"
+                                : "text-slate-700 hover:bg-slate-100/70"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                  isSelected ? "bg-[#176B63]" : "bg-slate-300"
+                                }`}
+                              />
+                              <span className="truncate">{d.department_name}</span>
+                            </div>
+                            {isSelected && <Check className="h-3.5 w-3.5 text-[#176B63] shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Timeframe Selector */}
-          <div className="flex items-center glass-pill rounded-xl p-0.5 shadow-xs">
+          <div className="flex items-center glass-pill rounded-xl p-1 shadow-xs">
             {(["24h", "7d", "30d", "90d"] as const).map((tf) => (
               <button
                 key={tf}
                 onClick={() => handleTimeframeChange(tf)}
                 disabled={isLoadingTimeframe}
-                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 text-xs sm:text-sm font-black rounded-lg transition-all cursor-pointer ${
                   timeframe === tf
                     ? "bg-[#176B63] text-white shadow-xs"
                     : "text-[#475569] hover:text-[#0F172A] hover:bg-black/5"
@@ -363,10 +452,10 @@ export function OverviewDashboard({
             <button
               onClick={onRunSLACheck}
               disabled={isRunningSLACheck}
-              className="px-3 py-1.5 rounded-xl border border-[#CBD5E1] bg-white/80 hover:bg-white text-xs font-bold text-[#0F172A] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-3.5 py-2 rounded-xl border border-[#CBD5E1] bg-white/90 hover:bg-white text-xs sm:text-sm font-bold text-[#0F172A] transition-all flex items-center gap-2 cursor-pointer shadow-xs"
               title="Run on-demand SLA escalation cycle"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isRunningSLACheck ? "animate-spin text-[#176B63]" : ""}`} />
+              <RefreshCw className={`h-4 w-4 ${isRunningSLACheck ? "animate-spin text-[#176B63]" : ""}`} />
               <span className="hidden sm:inline">SLA Check</span>
             </button>
           )}
@@ -375,9 +464,9 @@ export function OverviewDashboard({
           {onOpenCreateTicket && (
             <button
               onClick={onOpenCreateTicket}
-              className="px-3.5 py-1.5 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-[#176B63] hover:bg-[#10574F] text-white text-xs sm:text-sm font-black transition-all flex items-center gap-2 shadow-xs cursor-pointer"
             >
-              <PlusCircle className="h-3.5 w-3.5" />
+              <PlusCircle className="h-4 w-4" />
               <span>New Ticket</span>
             </button>
           )}
@@ -385,33 +474,33 @@ export function OverviewDashboard({
       </div>
 
       {/* 8 Overview KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         {kpiCards.map((kpi) => {
           const IconComp = kpi.icon;
           return (
             <div
               key={kpi.id}
               onClick={kpi.onClick}
-              className="glass-card glass-card-interactive rounded-2xl p-4 sm:p-4.5 flex flex-col justify-between cursor-pointer group"
+              className="glass-card glass-card-interactive rounded-2xl p-4 sm:p-5 flex flex-col justify-between cursor-pointer group min-h-[155px]"
             >
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${kpi.badgeColor}`}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${kpi.badgeColor}`}>
                     {kpi.badge}
                   </span>
-                  <div className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${kpi.iconBg}`}>
-                    <IconComp className="h-4 w-4" />
+                  <div className={`h-8.5 w-8.5 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${kpi.iconBg}`}>
+                    <IconComp className="h-4.5 w-4.5" />
                   </div>
                 </div>
 
-                <div className="text-2xl sm:text-3xl font-black tracking-tight text-[#0F172A] tabular-nums mt-1">
+                <div className="text-2xl sm:text-3xl font-black tracking-tight text-[#0F172A] tabular-nums mt-1 font-display">
                   {kpi.value}
                 </div>
-                <h3 className="text-xs font-extrabold text-[#334155] mt-1">{kpi.title}</h3>
+                <h3 className="text-xs sm:text-[13px] font-bold text-[#1E293B] mt-1">{kpi.title}</h3>
                 <p className="text-[11px] text-[#64748B] font-medium mt-0.5 line-clamp-1">{kpi.sub}</p>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-[#E2E8F0]/70 flex items-center justify-between text-[11px] font-bold text-[#176B63] group-hover:text-[#10574F]">
+              <div className="mt-3 pt-2.5 border-t border-[#E2E8F0]/70 flex items-center justify-between text-xs font-bold text-[#176B63] group-hover:text-[#10574F]">
                 <span>{kpi.actionHint}</span>
                 <ChevronRight className="h-3.5 w-3.5 transform group-hover:translate-x-1 transition-transform" />
               </div>
@@ -421,20 +510,20 @@ export function OverviewDashboard({
       </div>
 
       {/* Analytics Visualization Hub: Chart Tabs */}
-      <div className="glass-surface rounded-3xl p-5 sm:p-6 border border-white/60 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
+      <div className="glass-surface rounded-3xl p-6 sm:p-8 border border-white/60 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0]">
           <div>
-            <h2 className="text-base font-black text-[#0F172A] tracking-tight flex items-center gap-2">
-              <BarChart3 className="h-4.5 w-4.5 text-[#176B63]" />
+            <h2 className="text-lg sm:text-xl font-black text-[#0F172A] tracking-tight flex items-center gap-2.5">
+              <BarChart3 className="h-5 w-5 text-[#176B63]" />
               Hospital Analytics & Workload Intelligence
             </h2>
-            <p className="text-xs text-[#64748B] font-medium mt-0.5">
+            <p className="text-xs sm:text-sm text-[#475569] font-medium mt-1">
               Live database metrics aggregated across {chartDepts.length} department{chartDepts.length === 1 ? "" : "s"} over the last {timeframe}.
             </p>
           </div>
 
           {/* Interactive Chart Category Pills */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-[#F1F5F9]/80 p-1 rounded-xl">
+          <div className="flex flex-wrap items-center gap-1.5 bg-[#F1F5F9]/90 p-1.5 rounded-2xl">
             {[
               { id: "volume", label: "Volume & Trends" },
               { id: "depts", label: "By Department" },
@@ -446,7 +535,7 @@ export function OverviewDashboard({
               <button
                 key={tab.id}
                 onClick={() => setActiveChartTab(tab.id as any)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
                   activeChartTab === tab.id
                     ? "bg-white text-[#176B63] shadow-xs"
                     : "text-[#64748B] hover:text-[#0F172A]"
@@ -768,31 +857,31 @@ export function OverviewDashboard({
 
       {/* Priority Overdue Action Table */}
       {priority_overdue.length > 0 && (
-        <div className="glass-surface rounded-3xl p-5 sm:p-6 border border-white/60 shadow-xs space-y-3">
+        <div className="glass-surface rounded-3xl p-6 sm:p-7 border border-white/60 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4.5 w-4.5 text-[#DC2626]" />
-              <h3 className="text-sm font-bold text-[#0F172A]">Priority Overdue Tickets Awaiting Escalation Action</h3>
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="h-5 w-5 text-[#DC2626]" />
+              <h3 className="text-base font-black text-[#0F172A]">Priority Overdue Tickets Awaiting Escalation Action</h3>
             </div>
             <button
               onClick={() => onViewAllTickets("open", undefined, "overdue")}
-              className="text-xs font-bold text-[#176B63] hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-xs sm:text-sm font-bold text-[#176B63] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>View all overdue ({kpis.overdue_tickets})</span>
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs sm:text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] text-[#0F172A] font-bold">
-                  <th className="py-2 px-3">Ticket</th>
-                  <th className="py-2 px-3">Room</th>
-                  <th className="py-2 px-3">Title</th>
-                  <th className="py-2 px-3">Priority</th>
-                  <th className="py-2 px-3 text-right">Overdue By</th>
-                  <th className="py-2 px-3 text-right">Action</th>
+                  <th className="py-3 px-4">Ticket</th>
+                  <th className="py-3 px-4">Room</th>
+                  <th className="py-3 px-4">Title</th>
+                  <th className="py-3 px-4">Priority</th>
+                  <th className="py-3 px-4 text-right">Overdue By</th>
+                  <th className="py-3 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]/60">
@@ -802,18 +891,18 @@ export function OverviewDashboard({
                     onClick={() => onSelectTicket(t.id)}
                     className="hover:bg-white/90 transition-colors cursor-pointer text-[#334155] font-medium"
                   >
-                    <td className="py-2.5 px-3 font-bold text-[#176B63] font-mono">{t.ticket_number}</td>
-                    <td className="py-2.5 px-3 font-bold text-[#0F172A]">{t.room_number}</td>
-                    <td className="py-2.5 px-3 truncate max-w-xs">{t.title}</td>
-                    <td className="py-2.5 px-3">
-                      <span className="font-extrabold uppercase text-[10px] px-2 py-0.5 rounded-full bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]">
+                    <td className="py-3.5 px-4 font-bold text-[#176B63] font-mono">{t.ticket_number}</td>
+                    <td className="py-3.5 px-4 font-bold text-[#0F172A]">{t.room_number}</td>
+                    <td className="py-3.5 px-4 truncate max-w-xs">{t.title}</td>
+                    <td className="py-3.5 px-4">
+                      <span className="font-extrabold uppercase text-xs px-2.5 py-1 rounded-full bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]">
                         {t.priority}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-[#DC2626]">
+                    <td className="py-3.5 px-4 text-right font-black text-[#DC2626] tabular-nums">
                       {t.minutes_overdue}m overdue
                     </td>
-                    <td className="py-2.5 px-3 text-right">
+                    <td className="py-3.5 px-4 text-right">
                       <span className="font-bold text-[#176B63] hover:underline">
                         Open Ticket →
                       </span>

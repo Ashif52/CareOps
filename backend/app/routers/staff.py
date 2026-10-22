@@ -11,7 +11,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, desc, asc
 import logging
 from app.database import get_db
 from app.models import User, Department, AuditLog, Ticket

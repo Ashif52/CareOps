@@ -164,13 +164,13 @@ export function TicketVolumeTrendsChart({
     return timeframe === "7d" ? "Past 7 Days" : timeframe === "30d" ? "Past 30 Days" : timeframe === "90d" ? "Past 90 Days" : "Past 24 Hours";
   }, [data, timeframe]);
 
-  // Chart Geometry
+  // Chart Geometry — Substantial proportions to fully fill vertical card space
   const chartW = 900;
-  const chartH = 300;
-  const padL = 44;
+  const chartH = 390;
+  const padL = 54;
   const padR = 24;
-  const padT = 32;
-  const padB = 36;
+  const padT = 38;
+  const padB = 46;
   const plotW = chartW - padL - padR;
   const plotH = chartH - padT - padB;
   const baseline = padT + plotH;
@@ -287,39 +287,12 @@ export function TicketVolumeTrendsChart({
           </div>
         </div>
 
-        {/* Header Controls: Reporting Period + Segmented Period Selector + Comparison Toggle */}
+        {/* Header Controls: Reporting Period Badge & Optional Prior Period Toggle */}
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* Current Reporting Period Badge */}
           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 border border-slate-200/80 text-xs font-semibold text-slate-700 shadow-2xs">
             <Calendar className="h-3.5 w-3.5 text-[#176B63]" />
             <span>{periodDateRange}</span>
-          </div>
-
-          {/* Apple-style Compact Period Segmented Control */}
-          <div className="inline-flex items-center bg-slate-100/80 p-0.5 rounded-xl border border-slate-200/80 shadow-2xs">
-            {(
-              [
-                { id: "7d", label: "7 Days" },
-                { id: "30d", label: "30 Days" },
-                { id: "90d", label: "90 Days" },
-              ] as const
-            ).map((seg) => {
-              const active = timeframe === seg.id;
-              return (
-                <button
-                  key={seg.id}
-                  onClick={() => onTimeframeChange(seg.id)}
-                  disabled={isLoading}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer disabled:opacity-50 ${
-                    active
-                      ? "bg-white text-[#176B63] shadow-xs scale-100 font-black border border-slate-200/40"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-                  }`}
-                >
-                  {seg.label}
-                </button>
-              );
-            })}
           </div>
 
           {/* Optional Comparison Toggle (if backend comparisons exist) */}
@@ -417,12 +390,12 @@ export function TicketVolumeTrendsChart({
       ) : (
         <div
           className="relative rounded-2xl bg-gradient-to-b from-white/70 via-slate-50/30 to-slate-100/40 border border-slate-200/90 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden select-none"
-          style={{ minHeight: 310 }}
+          style={{ minHeight: 380 }}
         >
           <svg
             viewBox={`0 0 ${chartW} ${chartH}`}
             className="w-full h-auto block"
-            style={{ minHeight: 280 }}
+            style={{ minHeight: 360 }}
             preserveAspectRatio="xMidYMid meet"
           >
             <defs>
@@ -462,17 +435,17 @@ export function TicketVolumeTrendsChart({
                   x2={chartW - padR}
                   y2={g.y}
                   stroke="#E2E8F0"
-                  strokeWidth={g.val === 0 ? "1.2" : "0.8"}
+                  strokeWidth={g.val === 0 ? "1.5" : "0.9"}
                   strokeDasharray={g.val === 0 ? "none" : "4 4"}
                 />
                 <text
-                  x={padL - 10}
-                  y={g.y + 3.5}
+                  x={padL - 12}
+                  y={g.y + 4}
                   textAnchor="end"
-                  fontSize="10"
+                  fontSize="12.5"
                   fontWeight="700"
                   fill="#64748B"
-                  fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+                  fontFamily="'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
                   className="tabular-nums"
                 >
                   {g.val}
@@ -566,10 +539,10 @@ export function TicketVolumeTrendsChart({
                   <circle
                     cx={cx}
                     cy={cy}
-                    r={isHovered ? "5.5" : "4.25"}
+                    r={isHovered ? "6.5" : "5"}
                     fill="#FFFFFF"
                     stroke="#176B63"
-                    strokeWidth={isHovered ? "2.5" : "2"}
+                    strokeWidth={isHovered ? "3" : "2.25"}
                     filter="url(#point-glow)"
                   />
                 </g>
@@ -586,7 +559,7 @@ export function TicketVolumeTrendsChart({
                     <circle
                       cx={cx}
                       cy={cy}
-                      r={isHovered ? "10" : "7.5"}
+                      r={isHovered ? "11" : "8"}
                       fill="none"
                       stroke="#2563EB"
                       strokeWidth="1.5"
@@ -596,10 +569,10 @@ export function TicketVolumeTrendsChart({
                   <circle
                     cx={cx}
                     cy={cy}
-                    r={isHovered ? "5.5" : "4.25"}
+                    r={isHovered ? "6.5" : "5"}
                     fill="#FFFFFF"
                     stroke="#2563EB"
-                    strokeWidth={isHovered ? "2.5" : "2"}
+                    strokeWidth={isHovered ? "3" : "2.25"}
                     filter="url(#point-glow)"
                   />
                 </g>
@@ -614,18 +587,18 @@ export function TicketVolumeTrendsChart({
                 <g key={`xaxis-${i}`}>
                   <text
                     x={xOf(i)}
-                    y={chartH - 8}
+                    y={chartH - 12}
                     textAnchor="middle"
-                    fontSize="10.5"
+                    fontSize="12.5"
                     fontWeight={isLatest || isHovered ? "800" : "600"}
                     fill={isHovered ? "#176B63" : isLatest ? "#0F172A" : "#64748B"}
-                    fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+                    fontFamily="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'SF Pro', system-ui, sans-serif"
                     className="transition-colors duration-150"
                   >
                     {item.label}
                   </text>
                   {isLatest && (
-                    <circle cx={xOf(i)} cy={chartH - 2} r="1.5" fill="#176B63" />
+                    <circle cx={xOf(i)} cy={chartH - 4} r="2" fill="#176B63" />
                   )}
                 </g>
               );
@@ -758,101 +731,132 @@ export function TicketVolumeTrendsChart({
       )}
 
       {/* 4. COMPACT MEANINGFUL SUMMARY CONTEXT STRIP */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-        {/* Metric 1: Total Created */}
-        <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#E8F3F1]/80 to-[#E8F3F1]/40 border border-[#B6DCD7]/70 shadow-2xs">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-extrabold text-[#176B63] uppercase tracking-wider">
-              Total Created
-            </span>
-            <Inbox className="h-3.5 w-3.5 text-[#176B63]" />
-          </div>
-          <div className="text-xl font-black text-[#176B63] tabular-nums tracking-tight">
-            {totalCreated}
-          </div>
-          <div className="text-[11px] text-slate-600 font-medium mt-0.5">
-            Incoming complaints in period
-          </div>
-          {comparisons?.created_delta_pct != null && showComparison && (
-            <div className="text-[10px] font-bold text-slate-700 mt-1 flex items-center gap-1">
-              <span>vs prior:</span>
-              <span className={comparisons.created_delta_pct > 0 ? "text-amber-700" : "text-emerald-700"}>
-                {comparisons.created_delta_pct > 0 ? `+${comparisons.created_delta_pct}%` : `${comparisons.created_delta_pct}%`}
-              </span>
+      {(() => {
+        const numericRatio = totalCreated > 0 ? Math.round((totalResolved / totalCreated) * 100) : (totalResolved > 0 ? 100 : 0);
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+            {/* Metric 1: Total Created */}
+            <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-br from-[#E8F3F1]/90 to-[#E8F3F1]/45 border border-[#B6DCD7]/75 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-black text-[#176B63] uppercase tracking-wider">
+                    Total Created
+                  </span>
+                  <div className="h-6 w-6 rounded-lg bg-[#176B63]/10 flex items-center justify-center text-[#176B63]">
+                    <Inbox className="h-3.5 w-3.5" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-[#176B63] tabular-nums tracking-tight font-display">
+                  {totalCreated}
+                </div>
+                <div className="text-xs text-slate-600 font-medium mt-0.5">
+                  Incoming requests in period
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-[#B6DCD7]/60 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500 font-semibold">Volume share</span>
+                <span className="font-extrabold text-[#176B63] tabular-nums">
+                  {totalCreated + totalResolved > 0 ? `${Math.round((totalCreated / (totalCreated + totalResolved)) * 100)}%` : "0%"}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Metric 2: Total Resolved */}
-        <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#EEF4FD]/80 to-[#EEF4FD]/40 border border-[#BFDBFE]/70 shadow-2xs">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-extrabold text-[#2563EB] uppercase tracking-wider">
-              Total Resolved
-            </span>
-            <CheckCircle2 className="h-3.5 w-3.5 text-[#2563EB]" />
-          </div>
-          <div className="text-xl font-black text-[#2563EB] tabular-nums tracking-tight">
-            {totalResolved}
-          </div>
-          <div className="text-[11px] text-slate-600 font-medium mt-0.5">
-            Verified resolutions in period
-          </div>
-          {comparisons?.completed_delta_pct != null && showComparison && (
-            <div className="text-[10px] font-bold text-slate-700 mt-1 flex items-center gap-1">
-              <span>vs prior:</span>
-              <span className={comparisons.completed_delta_pct >= 0 ? "text-emerald-700" : "text-rose-700"}>
-                {comparisons.completed_delta_pct > 0 ? `+${comparisons.completed_delta_pct}%` : `${comparisons.completed_delta_pct}%`}
-              </span>
+            {/* Metric 2: Total Resolved */}
+            <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-br from-[#EEF4FD]/90 to-[#EEF4FD]/45 border border-[#BFDBFE]/75 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-black text-[#2563EB] uppercase tracking-wider">
+                    Total Resolved
+                  </span>
+                  <div className="h-6 w-6 rounded-lg bg-[#2563EB]/10 flex items-center justify-center text-[#2563EB]">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-[#2563EB] tabular-nums tracking-tight font-display">
+                  {totalResolved}
+                </div>
+                <div className="text-xs text-slate-600 font-medium mt-0.5">
+                  Verified resolutions in period
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-[#BFDBFE]/60 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500 font-semibold">Volume share</span>
+                <span className="font-extrabold text-[#2563EB] tabular-nums">
+                  {totalCreated + totalResolved > 0 ? `${Math.round((totalResolved / (totalCreated + totalResolved)) * 100)}%` : "0%"}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Metric 3: Current Net Change */}
-        <div className="p-3.5 rounded-xl bg-white/80 border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">
-              Net Change
-            </span>
-            {netChange > 0 ? (
-              <ArrowUpRight className="h-3.5 w-3.5 text-rose-600" />
-            ) : netChange < 0 ? (
-              <ArrowDownRight className="h-3.5 w-3.5 text-emerald-600" />
-            ) : (
-              <CheckCircle2 className="h-3.5 w-3.5 text-slate-500" />
-            )}
-          </div>
-          <div
-            className={`text-xl font-black tabular-nums tracking-tight flex items-center gap-1 ${
-              netChange > 0 ? "text-rose-600" : netChange < 0 ? "text-emerald-600" : "text-slate-800"
-            }`}
-          >
-            {netChange > 0 ? `+${netChange}` : netChange}
-          </div>
-          <div className="text-[11px] text-slate-600 font-medium mt-0.5">
-            {netChange > 0
-              ? "Backlog increased"
-              : netChange < 0
-              ? "Backlog reduced"
-              : "Balanced operational load"}
-          </div>
-        </div>
+            {/* Metric 3: Current Net Change */}
+            <div className="p-4 sm:p-4.5 rounded-2xl bg-white/90 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-black text-slate-600 uppercase tracking-wider">
+                    Net Delta
+                  </span>
+                  <div className={`h-6 w-6 rounded-lg flex items-center justify-center ${
+                    netChange > 0 ? "bg-rose-50 text-rose-600" : netChange < 0 ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    {netChange > 0 ? (
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    ) : netChange < 0 ? (
+                      <ArrowDownRight className="h-3.5 w-3.5" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                </div>
+                <div
+                  className={`text-2xl sm:text-3xl font-black tabular-nums tracking-tight font-display ${
+                    netChange > 0 ? "text-rose-600" : netChange < 0 ? "text-emerald-600" : "text-slate-800"
+                  }`}
+                >
+                  {netChange > 0 ? `+${netChange}` : netChange}
+                </div>
+                <div className="text-xs text-slate-600 font-medium mt-0.5">
+                  {netChange > 0
+                    ? "Backlog increased"
+                    : netChange < 0
+                    ? "Backlog reduced"
+                    : "Balanced operational load"}
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500 font-semibold">Impact</span>
+                <span className={`font-extrabold ${netChange > 0 ? "text-rose-600" : netChange < 0 ? "text-emerald-600" : "text-slate-600"}`}>
+                  {netChange > 0 ? "Queue load added" : netChange < 0 ? "Queue cleared" : "Neutral"}
+                </span>
+              </div>
+            </div>
 
-        {/* Metric 4: Resolution Ratio */}
-        <div className="p-3.5 rounded-xl bg-white/80 border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">
-              Resolution Ratio
-            </span>
-            <TrendingUp className="h-3.5 w-3.5 text-slate-500" />
+            {/* Metric 4: Resolution Ratio */}
+            <div className="p-4 sm:p-4.5 rounded-2xl bg-white/90 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-black text-slate-600 uppercase tracking-wider">
+                    Resolution Ratio
+                  </span>
+                  <div className="h-6 w-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500">
+                    <TrendingUp className="h-3.5 w-3.5" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums tracking-tight font-display">
+                  {resolutionRatio}
+                </div>
+                <div className="text-xs text-slate-600 font-medium mt-0.5" title="Resolved ÷ Created × 100">
+                  Resolved ÷ Created (throughput)
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500 font-semibold">Throughput status</span>
+                <span className={`font-extrabold ${numericRatio >= 90 ? "text-emerald-600" : numericRatio >= 60 ? "text-[#176B63]" : "text-amber-600"}`}>
+                  {numericRatio >= 100 ? "Complete" : numericRatio >= 75 ? "Optimal" : "Pacing"}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="text-xl font-black text-slate-900 tabular-nums tracking-tight">
-            {resolutionRatio}
-          </div>
-          <div className="text-[11px] text-slate-600 font-medium mt-0.5" title="Resolved ÷ Created × 100">
-            Resolved ÷ Created (throughput)
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* 5. FOOTER ACTION */}
       <div className="flex items-center justify-between pt-2 text-xs">

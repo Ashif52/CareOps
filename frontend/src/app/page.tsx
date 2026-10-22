@@ -580,7 +580,7 @@ export default function CareOpsApp() {
       {/* Main Content Pane */}
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
-          sidebarCollapsed ? "ml-18" : "ml-64"
+          sidebarCollapsed ? "ml-16" : "ml-64"
         }`}
       >
         <Header

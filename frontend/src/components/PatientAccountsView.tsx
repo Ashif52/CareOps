@@ -60,7 +60,8 @@ export function PatientAccountsView() {
         search: searchQuery.trim() || undefined,
         limit: 100,
       });
-      setPatients(res || []);
+      const patientItems = Array.isArray(res) ? res : (res?.items || []);
+      setPatients(patientItems);
     } catch (err) {
       console.error("Failed to fetch patient accounts:", err);
     } finally {

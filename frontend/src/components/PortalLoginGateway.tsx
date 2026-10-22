@@ -247,57 +247,57 @@ export function PortalLoginGateway({
         </header>
 
       {/* Main Container */}
-      <main className="max-w-4xl w-full mx-auto my-auto py-6 space-y-6">
+      <main className="max-w-5xl w-full mx-auto my-auto py-8 space-y-7 px-4">
         {/* Title */}
-        <div className="text-center max-w-xl mx-auto space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+        <div className="text-center max-w-2xl mx-auto space-y-2">
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight font-display">
             Hospital Management System
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
+          <p className="text-sm sm:text-base text-slate-600 font-medium">
             Sign in to your authorized operations workspace. Patient requests are submitted via bedside room QR codes.
           </p>
         </div>
 
         {/* The Two Main Authorized Portals Selector Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
           {/* 1. Admin Portal */}
           <button
             type="button"
             onClick={() => handleSelectPortal("admin")}
-            className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
+            className={`p-6 rounded-3xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
               selectedPortal === "admin"
-                ? "bg-white border-[#176B63] shadow-lg shadow-[#176B63]/10"
+                ? "bg-white border-[#176B63] shadow-xl shadow-[#176B63]/10 ring-4 ring-[#176B63]/5"
                 : "bg-white/70 hover:bg-white border-slate-200 hover:border-slate-300"
             }`}
           >
             <div className="flex items-center justify-between mb-3">
               <div
-                className={`p-2.5 rounded-xl ${
+                className={`p-3 rounded-2xl ${
                   selectedPortal === "admin"
                     ? "bg-[#176B63] text-white shadow-sm"
                     : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
                 }`}
               >
-                <ShieldCheck className="h-5 w-5" />
+                <ShieldCheck className="h-6 w-6" />
               </div>
               <span
-                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                className={`text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${
                   selectedPortal === "admin"
                     ? "bg-emerald-50 text-[#176B63] border border-emerald-200"
-                    : "bg-slate-100 text-slate-500"
+                    : "bg-slate-100 text-slate-600"
                 }`}
               >
                 Portal A
               </span>
             </div>
-            <h2 className="font-extrabold text-base text-slate-900">Admin Portal</h2>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            <h2 className="font-extrabold text-lg text-slate-900 font-display">Admin Portal</h2>
+            <p className="text-xs text-slate-600 mt-1.5 leading-relaxed font-medium">
               Executive authority, staff credentials, SLA policies, security audit & email delivery dispatch.
             </p>
             {selectedPortal === "admin" && (
-              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
+              <div className="mt-3.5 flex items-center gap-1.5 text-xs font-black text-[#176B63]">
                 <span>Active Portal</span>
-                <ArrowRight className="h-3 w-3" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </div>
             )}
           </button>
@@ -306,47 +306,47 @@ export function PortalLoginGateway({
           <button
             type="button"
             onClick={() => handleSelectPortal("staff")}
-            className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
+            className={`p-6 rounded-3xl border-2 text-left transition-all cursor-pointer relative overflow-hidden group ${
               selectedPortal === "staff"
-                ? "bg-white border-[#176B63] shadow-lg shadow-[#176B63]/10"
+                ? "bg-white border-[#176B63] shadow-xl shadow-[#176B63]/10 ring-4 ring-[#176B63]/5"
                 : "bg-white/70 hover:bg-white border-slate-200 hover:border-slate-300"
             }`}
           >
             <div className="flex items-center justify-between mb-3">
               <div
-                className={`p-2.5 rounded-xl ${
+                className={`p-3 rounded-2xl ${
                   selectedPortal === "staff"
                     ? "bg-[#176B63] text-white shadow-sm"
                     : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
                 }`}
               >
-                <Building2 className="h-5 w-5" />
+                <Building2 className="h-6 w-6" />
               </div>
               <span
-                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                className={`text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${
                   selectedPortal === "staff"
                     ? "bg-emerald-50 text-[#176B63] border border-emerald-200"
-                    : "bg-slate-100 text-slate-500"
+                    : "bg-slate-100 text-slate-600"
                 }`}
               >
                 Portal B
               </span>
             </div>
-            <h2 className="font-extrabold text-base text-slate-900">Staff Portal</h2>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            <h2 className="font-extrabold text-lg text-slate-900 font-display">Staff Portal</h2>
+            <p className="text-xs text-slate-600 mt-1.5 leading-relaxed font-medium">
               Maintenance, Doctors, Nursing, Housekeeping, Billing & Pharmacy operational queues.
             </p>
             {selectedPortal === "staff" && (
-              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#176B63]">
+              <div className="mt-3.5 flex items-center gap-1.5 text-xs font-black text-[#176B63]">
                 <span>Active Portal</span>
-                <ArrowRight className="h-3 w-3" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </div>
             )}
           </button>
         </div>
 
         {/* Portal Login Card */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-900/5 p-6 sm:p-8 max-w-xl mx-auto space-y-5">
+        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl shadow-slate-900/5 p-7 sm:p-10 max-w-3xl mx-auto space-y-6">
           {/* Card Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
